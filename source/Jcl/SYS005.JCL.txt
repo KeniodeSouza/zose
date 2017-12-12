@@ -1,0 +1,29 @@
+//EXECS005  JOB   'EXECUTA PROGRAMA SYS005',
+//           COND=((12,EQ),(16,EQ),(888,EQ)),
+//           CLASS=A,MSGCLASS=R,MSGLEVEL=(1,1)
+//*
+//*-------------------------------------------------------------------*
+//SYS000    EXEC PGM=SYS000,
+//          PARM='ABC.XXX.SYSIN.DATA'
+//*-------------------------------------------------------------------*
+//COPIA     EXEC PGM=IEBGENER
+//SYSPRINT  DD   SYSOUT=*
+//SYSUT1    DD   *
+  REGISTRO 1
+  REGISTRO 2
+  REGISTRO 3
+/*
+//SYSUT2    DD  DSN=ABC.XXX.SYSIN.DATA,
+//           DISP=(,CATLG),LRECL=080,RECFM=FB,DSORG=PS,
+//           AVGREC=K,SPACE=(080,(001,001),RLSE)
+//*-------------------------------------------------------------------*
+//EXECUTAR  EXEC PGM=SYS005,
+//*         PARM=('FILE<>3')
+//*         PARM=('RC=10')
+//          PARM=('FILE<>0,RC=11')
+//*
+//SYSOUT     DD  SYSOUT=*
+//SYSPRINT   DD  SYSOUT=*
+//SYSIN      DD  DSN=ABC.XXX.SYSIN.DATA,
+//            DISP=SHR
+//

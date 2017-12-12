@@ -1,0 +1,327 @@
+//COMPS004  JOB  'CRIA O PROGRAMA SYS004',
+//           CLASS=A,MSGCLASS=R,MSGLEVEL=(1,1)
+//*
+//ASMHCL    PROC  RGN=4M,
+//            MEMBER=SYS004,
+//* ASSEMBLER PARM:
+//            ASMPRM='',
+//            MACLIB='SYS1.MACLIB',
+//            SRCLIB='SYS1.SAMPLIB',
+//* LINKEDIT PARM:
+//            LNKPRM=',MAP,PRINT,DCBS',
+//            LNKLIB='SYS1.LINKLIB',
+//            LODLIB='&&LOADLIB'
+//*
+//*********************************************************************
+//***                                                               ***
+//*      ESTA PROCEDURE CONTEM 2 STEPS:                               *
+//*        1. COMPILACAO ASSEMBLER DO PROGRAMA                        *
+//*        2. LINK-EDICAO DO PROGRAMA                                 *
+//***                                                               ***
+//*********************************************************************
+//*
+//*-------------------------------------------------------------------*
+//*           COMPILACAO DO PROGRAMA                                  *
+//*-------------------------------------------------------------------*
+//ASM       EXEC  PGM=ASMA90,REGION=&RGN,
+//          PARM='OBJECT,NODECK,TERM,XREF(SHORT)&ASMPRM'
+//SYSPRINT   DD   SYSOUT=*
+//SYSTERM    DD   DUMMY
+//SYSPUNCH   DD   SYSOUT=*
+//*
+//SYSLIB     DD   DISP=SHR,DSN=SYS1.MACLIB
+//           DD   DISP=SHR,DSN=&MACLIB
+//SYSUT1     DD   UNIT=VIO,SPACE=(1700,(500,50))
+//SYSLIN     DD   DSN=&&LOADSET,UNIT=SYSDA,DISP=(,PASS),
+//            BLKSIZE=27920,LRECL=80,RECFM=FB,DSORG=PS,BUFNO=30,
+//            SPACE=(TRK,(500,50))
+//SYSIN      DD   DISP=SHR,DSN=&SRCLIB(&MEMBER)
+//*
+//*-------------------------------------------------------------------*
+//*           LINK-EDICAO DO PROGRAMA                                 *
+//*-------------------------------------------------------------------*
+//LKED      EXEC  PGM=IEWL,COND=(05,LT,ASM),
+//          PARM='LET,LIST,CALL,XREF&LNKPRM'
+//SYSPRINT   DD   SYSOUT=*
+//*
+//SYSLIB     DD   DISP=SHR,DSN=SYS1.LINKLIB
+//           DD   DISP=SHR,DSN=&LNKLIB
+//*
+//SYSLIN     DD   DSN=&&LOADSET,DISP=(OLD,DELETE),BUFNO=30
+//           DD   DDNAME=SYSIN
+//SYSUT1     DD   UNIT=SYSDA,SPACE=(TRK,(400,40))
+//*
+//SYSLMOD    DD   DISP=SHR,DSN=&LODLIB(&MEMBER)
+//*********************************************************************
+//****************   E N D   O F   P R O C E D U R E   ****************
+//*********************************************************************
+//   PEND
+//*
+//EXECUTE   EXEC ASMHCL
+//ASM.SYSIN     DD  *
+         PRINT ON,NOGEN
+*
+         TITLE 'SYS004 - DESCRICAO SUMARIO DO PROGRAMA.'
+***********************************************************************
+*                                                                     *
+*            SSSSS  Y     Y  SSSSS   00000   00000     4  4           *
+*           S     S Y     Y S     S 00    0 00    0   4   4           *
+*           S        Y   Y  S       0 0   0 0 0   0  4    4           *
+*            SSSSS    YYY    SSSSS  0  0  0 0  0  0 4444444           *
+*                 S    Y          S 0   0 0 0   0 0       4           *
+*           S     S    Y    S     S 0    00 0    00       4           *
+*            SSSSS     Y     SSSSS   00000   00000        4           *
+*                                                                     *
+*---------------------------------------------------------------------*
+*                                                                     *
+*  Finalidade: Emite o codigo de retorno de acordo ou abend conforme  *
+*              valores que lhe forem fornecidos atraves do Parm.      *
+*  Autor.....: Kenio de souza                                         *
+*  Local/data: Brasilia, setembro/2014                                *
+*  Versao....: 1.0                                                    *
+*                                                                     *
+*---------------------------------------------------------------------*
+*  NOTA:                                                              *
+*   - Registradores geral:                                            *
+*     -INPUT : R1  - ENDERECO DO PARM;                                *
+*              R13 - ENDERECO DA SAVEAREA;                            *
+*              R14 - ENDERECO DE RETORNO;                             *
+*              R15 - ENDERECO BASE INICIAL.                           *
+*     -Output: R15 - Return code: nn - Codigo do retorno.             *
+*                                 12 - PARM NAO INFORMADO             *
+*                                                                     *
+*   - Macros: ABEND  -                                                *
+*                                                                     *
+*   - Informacoes de uso:                                             *
+*     - Forma de utilizacao - JCL                                     *
+*         //..  JOB ..                                                *
+*         //SYS004   EXEC PGM=SYS004,                                 *
+*         //         PARM='formato'                                   *
+*         //SYSPRINT DD   SYSOUT=*                                    *
+*                                                                     *
+*     - Utilizando PARM                                               *
+*       - De 1 a 2 digitos, cujos valores vao de 1 a 99, o codigo     *
+*         de retorno sera' igual ao numero informado;                 *
+*         De 3 ou 4 digitos, cujos valores vao de 100 a 4095,         *
+*         sera emitido um abend com valor igual ao numero informado.  *
+*       - Se o Parm for identificado com alfanumerico ou seu tamanho  *
+*         ultrapassar a 4 digitos, será tratado como texto e será     *
+*         exibido na console do operador.                             *
+*                                                                     *
+*       - Formato básico                                              *
+*         PARM=nnnn  Onde:                                            *
+*                       nnnn Identifica o codigo numerico para ser    *
+*                            processado.                              *
+*                                                                     *
+*      - Formato utilizando somente o texto                           *
+*         PARM=('texto texto texto')                                  *
+*         -Exibe o texto junto a console do operador e termina com    *
+*          RC igual a zero.                                           *
+*                                                                     *
+*      - Formato utilizando codigo e texto                            *
+*         PARM=('nnnn=texto texto texto')                             *
+*         -Código numérico e texto livre para exibicao. Será exibido  *
+*          o texto na console do operador e terminará com RC ou ABEND *
+*          igual a 'nnnn'.                                            *
+*                                                                     *
+***********************************************************************
+         COPY ASM@MACR
+*
+         TITLE 'SYS004 - ROTINAS INICIAIS DO PROGRAMA'
+*---------------------------------------------------------------------*
+* PROC: ROTINA DE INICIALIZACAO COM LINKAGE SECTION INICIAL           *
+*---------------------------------------------------------------------*
+SIS004   ENTER SAVEAREA
+*
+*---------------------------------------------------------------------*
+* PROC: INICIALIZACAO -> RECEPCAO DE PARAMETROS                       *
+*---------------------------------------------------------------------*
+P1_INIT  DS   0H
+         LTR   R1,R1              :R1-> EXISTE PARAMETRO?
+         BZ    E1_PARM            :...NAO. ERRO DE PARM
+         L     R1,0(,R1)          :R1<-R1. APONTA ENDERECOS DO PARM
+         N     R1,=XL4'7FFFFFFF'  :R1-> PARM EXISTE?
+         BZ    E1_PARM            :...NAO. ERRO DE PARM
+         LH    R2,0(,R1)          :R4<- SALVA O TAMANHO DO PARM
+         CH    R2,=H'40'          :R4-> TAMANHO DO PARM E' MAIOR QUE?
+         BH    E1_PARM            :...SIM. ERRO DE PARAMETRO
+         LA    R3,2(,R1)          :R3<- ENDERECO DO DADOS DO PARM
+*
+*---------------------------------------------------------------------*
+* PROC: PROCESSAMENTO                                                 *
+*---------------------------------------------------------------------*
+P2_PROC  DS   0H
+         LA    R4,WRK#TEXT        :R4<-ENDERECO DE DESTINO
+         XR    R5,R5              :R5<-ZERA TAMANHO DE DESTINO
+*
+P2_LOOP  EQU   *
+         CLI   0(R3),C'='         :R3<- CARACTER E' ','?
+         BE    P2_CHNGR           :...SIM. MUDANCA DE COMANDO.
+         MVC   0(1,R4),0(R3)      :WRK#TEXT <- PARM
+         LA    R4,1(,R4)          :R4<- PROXIMO ENDERECO DE DESTINO
+         LA    R5,1(,R5)          :R5<- ADICIONAR 1 AO TAMANHO
+         B     P2_NEXT            :AVANCAR P/ PROXIMO ENDERECO
+*
+P2_CHNGR EQU   *
+         CL    R5,=F'4'           :R5<- TAMANHO MAIOR 4?
+         BH    P2_TEXT            :...SIM. PROCESSA COMO TEXTO.
+         CLI   WRK#TEXT,C'9'      :DADO INICIA COM NUMERICO?
+         BH    P2_TEXT            :...NAO. PROCESSA COMO TEXTO.
+         BAL   R14,S1_CANCL       :R14<- PROCESSA O RETUN CODE.
+         B     P2_CLEAR           :PREPARA P/ PROXIMO COMANDO.
+*
+P2_TEXT  EQU   *
+         BAL   R14,S2_CONSL       :R2<-ENDERECO DA VARIAVEL
+*
+P2_CLEAR EQU   *
+         MVI   WRK#TEXT,C' '      :LIMPA A AREA.
+         MVC   WRK#TEXT+1(L'WRK#TEXT-1),WRK#TEXT
+         LA    R4,WRK#TEXT        :R4<-ENDERECO DO DESTINO
+         XR    R5,R5              :R5<-ZERA TAMANHO DE DESTINO
+*
+P2_NEXT  EQU   *
+         LA    R3,1(,R3)          :R3<- PROXIMO ENDERECO DO PARM
+         BCT   R2,P2_LOOP         :R2<- CONTROLA O LACO DE TAMANHO
+*
+*---------------------------------------------------------------------*
+* PROC: ENCERRAMENTO ->                                               *
+*---------------------------------------------------------------------*
+P3_END   DS   0H
+         CLI   WRK#TEXT,C' '      :TEM DADOS A PROCESSAR?
+         BE    P9_EOJ             :...NAO. TERMINA O PROGRAMA.
+         CL    R5,=F'4'           :R5<- TAMANHO MAIOR 4?
+         BH    P3_TEXT            :...SIM. PROCESSA COMO TEXTO.
+         CLI   WRK#TEXT,C'9'      :DADO INICIA COM NUMERICO?
+         BH    P3_TEXT            :...NAO. PROCESSA COMO TEXTO.
+         BAL   R14,S1_CANCL       :R14<- PROCESSA O RETUN CODE.
+         B     P3_CONSL           :VERIFICA A CONSOLE.
+*
+P3_TEXT  EQU   *
+         BAL   R14,S2_CONSL       :R14<- PROCESSA O TEXTO DA CONSOLE.
+*
+P3_CONSL EQU   *
+         CLI   CONSOLE+4,C' '     :CONSOLE TEM MENSAGE A EXIBIR?
+         BE    P3_FINIS           :...NAO. VERIFICA CODIGO DE RETORNO.
+         WTO   MF=(E,CONSOLE)     :ENVIO DA MENSAGEM P/ OPERADOR
+*
+P3_FINIS EQU   *
+         CLC   RETNCODE,=F'100'   :RETN. CODE MAIOR QUE 100?
+         BNH   P9_EOJ             :...NAO. TERMINA O PROGRAMA.
+*
+         LA    R15,88             :R15<- RETURN CODE
+         L     R2,RETNCODE        :R2<- CODIGO DE RETORNO P/ ABEND
+         ABEND (R2),,STEP         :R2-> EXECUCAO DO ABEND
+         B     P9_EOJ             :TERMINA O PROGRAMA
+*
+         TITLE 'SYS004 - DEFINICAO  DOS  ERROS'
+*---------------------------------------------------------------------*
+* ERRO: PARM NAO INFORMADO OU INVALIDO.                               *
+*---------------------------------------------------------------------*
+E1_PARM  DS   0H
+         WTO   '*** ERRO - PARAMETRO NAO INFORMADO'
+         MVC   RETNCODE,=F'12'    :RETURN CODE = 12
+         B     P9_EOJ             :TERMINO DO PROGRAMA
+*---------------------------------------------------------------------*
+* ERRO: PARM COM VALOR INVALIDO.                                      *
+*---------------------------------------------------------------------*
+E2_PARM  DS   0H
+         WTO   '*** ERRO - DEVE REPRESENTAR UM VALOR NUMERICO'
+         MVC   RETNCODE,=F'12'    :RETURN CODE = 12
+         B     P9_EOJ             :TERMINO DO PROGRAMA
+*
+         TITLE 'SYS004 - DEFINICAO  DAS  SUB-ROTINAS'
+*---------------------------------------------------------------------*
+* SUB: MONTA O CODIGO DE RETORNO                                      *
+*---------------------------------------------------------------------*
+*  INPUT : NENHUM                                                     *
+*  OUTPUT: R14: RETORNO A CHAMADA.                                    *
+*---------------------------------------------------------------------*
+S1_CANCL DS   0H
+         STM   R0,R15,SAVEREGS    :SALVA OS REGISTRADORES
+         LTR   R5,R5              :R5<-TAMANHO ESTA ZERADO?
+         BZ    S1_RETN            :...SIM. SAI DA SUB-ROTINA
+         CL    R5,=F'4'           :R7<- TAMANHO DO CODIGO MAIOR 4?
+         BH    E1_PARM            :...SIM. ERRO DE PARAMETRO
+*
+         LA    R6,WRK#TEXT        :R6<- ENDERECO DE ORIGEM
+         LA    R7,WRK#FULL        :R7<- ENDERECO DE DESTINO
+         LR    R8,R8              :R8<- ZERA O TAMANHO.
+*
+S1_LOOP  EQU   *
+         CLI   0(R6),X'F9'        :R3-> MAIOR QUE O '9'
+         BH    S1_NEXT            :...SIM. NAO E NUMERICO.
+         CLI   0(R6),X'F0'        :R3-> MENOR QUE '0'
+         BL    S1_NEXT            :...SIM. NAO E NUMERICO.
+         MVC   0(1,R7),0(R6)      :R7<-R6. MOVE ORIGEM P/ DESTINO.
+         LA    R7,1(,R7)          :R7<- AVANCA P/ PROXIMO ENDERECO
+         LA    R8,1(,R8)          :R8<- ADICIONAR 1 AO TAMANHO
+S1_NEXT  EQU   *
+         LA    R6,1(,R6)          :R6<- AVANCA P/ PROXIMO ENDERECO
+         BCT   R5,S1_LOOP         :R5<- CONTROLA O LACO DE TAMANHO
+         LTR   R8,R8              :R8<-TAMANHO ESTA ZERADO?
+         BZ    E2_PARM            :...SIM. ERRO DE PARAMETRO
+*
+         XC    WRK#DBLE,WRK#DBLE  :INIZIALIZA VARIAVEL
+         BCTR  R8,0               :R8->DESCONTA O OFFSET
+         EX    R8,PACK#TO         :EXECUTA A INSTRUCAO
+         CVB   R7,WRK#DBLE        :R7<- CONVERTE PARA BINARIO
+         ST    R7,RETNCODE        :R7-> SALVA PARA COD. DE RETORNO
+*
+S1_RETN  EQU   *
+         LM    R0,R15,SAVEREGS    :RESTAURA OS REGISTRADORES
+         BR    R14                :R14-> SAIDA DA SUB-ROTINA E RETORNO
+*
+PACK#TO  PACK  WRK#DBLE+4(4),WRK#FULL(0)
+*---------------------------------------------------------------------*
+* SUB: MONTA O TEXTO A EXIBIR NA CONSOLE                              *
+*---------------------------------------------------------------------*
+*  INPUT : NENHUM                                                     *
+*  OUTPUT: R14: RETORNO A CHAMADA.                                    *
+*---------------------------------------------------------------------*
+S2_CONSL DS   0H
+         STM   R0,R15,SAVEREGS    :SALVA OS REGISTRADORES
+         LTR   R5,R5              :R5<-TAMANHO ESTA ZERADO?
+         BZ    S2_RETN            :...SIM. SAI DA SUB-ROTINA
+         MVC   CONSOLE+4(70),WRK#TEXT
+*
+S2_RETN  EQU   *
+         LM    R0,R15,SAVEREGS    :RESTAURA OS REGISTRADORES
+         BR    R14                :R14-> SAIDA DA SUB-ROTINA E RETORNO
+*
+         TITLE 'SYS004 - ROTINAS FINAIS DO PROGRAMA'
+*---------------------------------------------------------------------*
+* PROC: FINALIZACAO -> RESTAURA COMPONENTES E TERMINA PROGRAMA        *
+*---------------------------------------------------------------------*
+P9_EOJ   DS   0H
+         L    R15,RETNCODE        :R15<- RETURN CODE
+         EXIT
+*
+         TITLE 'SYS004 - DEFINICAO  DAS  CONSTANTES  E  VARIAVEIS'
+*---------------------------------------------------------------------*
+* AREA: DEFINICAO DAS VARIAVEIS GLOBAIS DO PROGRAMA.                  *
+*---------------------------------------------------------------------*
+         CNOP  0,4
+         LTORG ,
+*
+         DS   0F
+SAVEAREA DS  18F                  :AREA DA LINKAGE SECTION
+SAVEREGS DS  16F                  :AREA DOS REGISTRADORES
+RETNCODE DS    F                  :COD. DE RETORNO
+*
+         DS   0F
+WRK#DBLE DC    D'0'               :WORD DOUBLE
+WRK#FULL DC   2F'0'               :WORD FULL
+WRK#TEXT DC    CL70' '            :TEXTO DE TRABALHO
+CONSOLE  WTO   '                                                       +
+                                        ',                             +
+               ROUTCDE=(1,10,11),                                      +
+               DESC=(11),                                              +
+               MF=L
+*
+         END    ,
+/*
+//*
+//LKED.SYSLMOD  DD  DISP=SHR,DSN=ABC.LOADLIB
+//LKED.SYSIN DD *
+  NAME SYS004(R)
+//

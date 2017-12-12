@@ -1,0 +1,255 @@
+//COMPS002  JOB  'CRIA O PROGRAMA SYS002',
+//           CLASS=A,MSGCLASS=R,MSGLEVEL=(1,1)
+//*
+//ASMHCL    PROC  RGN=4M,
+//            MEMBER=SYS002,
+//* ASSEMBLER PARM:
+//            ASMPRM='',
+//            MACLIB='SYS1.MACLIB',
+//            SRCLIB='SYS1.SAMPLIB',
+//* LINKEDIT PARM:
+//            LNKPRM=',MAP,PRINT,DCBS',
+//            LNKLIB='SYS1.LINKLIB',
+//            LODLIB='&&LOADLIB'
+//*
+//*********************************************************************
+//***                                                               ***
+//*      ESTA PROCEDURE CONTEM 2 STEPS:                               *
+//*        1. COMPILACAO ASSEMBLER DO PROGRAMA                        *
+//*        2. LINK-EDICAO DO PROGRAMA                                 *
+//***                                                               ***
+//*********************************************************************
+//*
+//*-------------------------------------------------------------------*
+//*           COMPILACAO DO PROGRAMA                                  *
+//*-------------------------------------------------------------------*
+//ASM       EXEC  PGM=ASMA90,REGION=&RGN,
+//          PARM='OBJECT,NODECK,TERM,XREF(SHORT)&ASMPRM'
+//SYSPRINT   DD   SYSOUT=*
+//SYSTERM    DD   DUMMY
+//SYSPUNCH   DD   SYSOUT=*
+//*
+//SYSLIB     DD   DISP=SHR,DSN=SYS1.MACLIB
+//           DD   DISP=SHR,DSN=&MACLIB
+//SYSUT1     DD   UNIT=VIO,SPACE=(1700,(500,50))
+//SYSLIN     DD   DSN=&&LOADSET,UNIT=SYSDA,DISP=(,PASS),
+//            BLKSIZE=27920,LRECL=80,RECFM=FB,DSORG=PS,BUFNO=30,
+//            SPACE=(TRK,(500,50))
+//SYSIN      DD   DISP=SHR,DSN=&SRCLIB(&MEMBER)
+//*
+//*-------------------------------------------------------------------*
+//*           LINK-EDICAO DO PROGRAMA                                 *
+//*-------------------------------------------------------------------*
+//LKED      EXEC  PGM=IEWL,COND=(05,LT,ASM),
+//          PARM='LET,LIST,CALL,XREF&LNKPRM'
+//SYSPRINT   DD   SYSOUT=*
+//*
+//SYSLIB     DD   DISP=SHR,DSN=SYS1.LINKLIB
+//           DD   DISP=SHR,DSN=&LNKLIB
+//*
+//SYSLIN     DD   DSN=&&LOADSET,DISP=(OLD,DELETE),BUFNO=30
+//           DD   DDNAME=SYSIN
+//SYSUT1     DD   UNIT=SYSDA,SPACE=(TRK,(400,40))
+//*
+//SYSLMOD    DD   DISP=SHR,DSN=&LODLIB(&MEMBER)
+//*********************************************************************
+//****************   E N D   O F   P R O C E D U R E   ****************
+//*********************************************************************
+//   PEND
+//*
+//EXECUTE   EXEC ASMHCL
+//ASM.SYSIN     DD  *
+         PRINT ON,NOGEN
+*
+         TITLE 'SYS002 - DESCRICAO SUMARIO DO PROGRAMA.'
+***********************************************************************
+*                                                                     *
+*            SSSSS  Y     Y  SSSSS   00000   00000   22222            *
+*           S     S Y     Y S     S 00    0 00    0 2     2           *
+*           S        Y   Y  S       0 0   0 0 0   0      2            *
+*            SSSSS    YYY    SSSSS  0  0  0 0  0  0    2              *
+*                 S    Y          S 0   0 0 0   0 0   2               *
+*           S     S    Y    S     S 0    00 0    00  2                *
+*            SSSSS     Y     SSSSS   00000   00000  2222222           *
+*                                                                     *
+*---------------------------------------------------------------------*
+*                                                                     *
+*  Finalidade: Inicializar arquivos vazios, isto eh, abrir e fechar   *
+*              cada arquivo informado, para que o sistema inicialize  *
+*              informacoes de controle do arquivo.                    *
+*  Autor.....: Kenio de Souza                                         *
+*  Local/data: Brasilia, julho/2014                                   *
+*  Versao....: 1.0                                                    *
+*                                                                     *
+*---------------------------------------------------------------------*
+*  NOTA:                                                              *
+*   - Registradores geral:                                            *
+*     -Input : R1  - endereco do parm;                                *
+*              R13 - endereco da savearea;                            *
+*              R14 - endereco de retorno;                             *
+*              R15 - endereco base inicial.                           *
+*     -Output: R15 - return code: 0 - dataset encontrado              *
+*                                12 - dataset nao encontrado          *
+*                                16 - parm nao informado              *
+*                                                                     *
+*   - MACROS: OPEN  - Inicializa o arquivo junto a VTOC               *
+*             CLOSE - fecha o arquivo arquivando dados na VTOC.       *
+*                                                                     *
+*   - Informacoes de uso:                                             *
+*     - Nao utilize a opcao "RLSE" no parametro "SPACE". O arquivo    *
+*       esta sendo alocado vazio.                                     *
+*                                                                     *
+*     - Forma de utilizacao - JCL                                     *
+*           //..  JOB ..                                              *
+*           //SYS002   EXEC PGM=SYS002,                               *
+*           //         PARM=xx                                        *
+*           //SYSPRINT DD   SYSOUT=*                                  *
+*           //SYSUT01  DD   DSN=...                                   *
+*           // ...                                                    *
+*           //SYSUTxx  DD   DSN=...                                   *
+*                                                                     *
+*     - Utilizando PARM                                               *
+*       A quantidade  de arquivos e' informada atraves de PARM,       *
+*       num maximo de 99 arquivos. Para cada arquivo que se deseja    *
+*       alocar, deve-se informar um DDname igual a 'SYSUTnn' onde     *
+*       'nn' e' o numero sequencial que sera' incrementado de 1 de    *
+*       acordo com a quantidade desejada.                             *
+*                                                                     *
+*       Exemplo:                                                      *
+*          //..  JOB ..                                               *
+*          //SYS002   EXEC PGM=SYS002,PARM=02                         *
+*          //SYSUT01  DD   DSN=ABC.SSS.SSS999A.DATA,                  *
+*          //         DISP=(,CATLG),SPACE=(TRK,(1,500)),              *
+*          //         BLKSIZE=0,LRECL=76,RECFM=FB,DSORG=PS            *
+*          //SYSUT02  DD   DSN=ABC.SSS.SSS999B.DATA,                  *
+*          //         DISP=(,CATLG),SPACE=(TRK,(1,500)),              *
+*          //         BLKSIZE=0,LRECL=76,RECFM=FB,DSORG=PS            *
+*                                                                     *
+*       - Inicializa dois arquivos vazios de nome:                    *
+*         ABC.SSS.SSS999A.DATA e  ABC.SSS.SSS999A.DATA                *
+*                                                                     *
+***********************************************************************
+         COPY ASM@MACR
+*
+         TITLE 'SYS002 - ROTINAS INICIAIS DO PROGRAMA'
+*---------------------------------------------------------------------*
+* PROC: ROTINA DE INICIALIZACAO COM LINKAGE SECTION INICIAL           *
+*---------------------------------------------------------------------*
+SIS002   ENTER SAVEAREA
+*
+*---------------------------------------------------------------------*
+* PROC: INICIALIZACAO -> RECEPCAO DE PARAMETROS                       *
+*---------------------------------------------------------------------*
+P1_INIT  DS   0H
+         LTR   R1,R1              :R1-> EXISTE PARAMETRO?
+         BZ    E1_PARM            :...NAO. ERRO DE PARAMETRO
+         L     R1,0(,R1)          :R1<-R1. APONTA ENDERECOS DO PARM
+         N     R1,=XL4'7FFFFFFF'  :R1-> PARM EXISTE?
+         BZ    E1_PARM            :...NAO. ERRO DE PARAMETRO
+         LH    R4,0(,R1)          :R4<- SALVA O TAMANHO DO PARM
+         LTR   R4,R4              :R4-> TAMANHO DO PARM ESTA ZERADO?
+         BZ    E1_PARM            :...SIM. ERRO DE PARAMETRO
+         CH    R4,=H'2'           :R4-> TAMANHO DO PARM ESTOUROU?
+         BNE   E1_PARM            :...SIM. ERRO DE PARAMETRO
+*
+*---------------------------------------------------------------------*
+* PROC: PROCESSAMENTO -> STRING                                       *
+*---------------------------------------------------------------------*
+P2_PROC  DS   0H
+         LA    R2,2(,R1)
+         PACK  WRK#DBLE+5(3),0(2,R2)
+         CVB   R4,WRK#DBLE        :R4-> CONVERTE PARA BINARIO
+         LTR   R4,R4              :R4-> ESTA ZERADO?
+         BZ    E2_PVAL            :...SIM. ERRO.
+         CH    R4,=H'20'          :R4-> MAIOR QUE 20?
+         BH    E2_PVAL            :...SIM. ERRO.
+         ZAP   WRK#PACK,=P'0'
+*
+P2_LOOP  EQU   *
+         AP    WRK#PACK,=P'1'
+         MVC   WRK#DBLE(3),=X'212020'
+         ED    WRK#DBLE(3),WRK#PACK
+         MVC   DDN#NUMR,WRK#DBLE+1
+         BAL   R14,S1_FILE
+         BCT   R4,P2_LOOP         :R4<- CONTROLE DE LACO
+         B     P9_END
+*
+         TITLE 'SYS002 - DEFINICAO  DOS  ERROS'
+*---------------------------------------------------------------------*
+* ERRO: PARM NAO INFORMADO OU INVALIDO.                               *
+*---------------------------------------------------------------------*
+E1_PARM  DS   0H
+         WTO   '*** ERRO - PARAMETRO NAO INFORMADA OU INVALIDO'
+         MVC   RETNCODE,=F'08'    :RETURN CODE = 8
+         B     P9_EOJ             :TERMINO DO PROGRAMA
+*---------------------------------------------------------------------*
+* ERRO: PARM NAO INFORMADO OU INVALIDO.                               *
+*---------------------------------------------------------------------*
+E2_PVAL  DS   0H
+         WTO   '*** ERRO - VALOR INFORMADO ESTA ZERADO'
+         MVC   RETNCODE,=F'08'    :RETURN CODE = 8
+         B     P9_EOJ             :TERMINO DO PROGRAMA
+*
+         TITLE 'SYS002 - DEFINICAO  DAS  SUB-ROTINAS'
+*---------------------------------------------------------------------*
+* SUB: MONTA O NOME DOS DATASET                                       *
+*---------------------------------------------------------------------*
+*  INPUT : NENHUM                                                     *
+*  OUTPUT: R14: RETORNO A CHAMADA.                                    *
+*---------------------------------------------------------------------*
+S1_FILE  DS   0H
+         STM   R0,R15,SAVEREGS    :SALVA OS REGISTRADORES
+*
+         MVC   SYSUT00+40(7),DDN#FILE
+         OPEN  (SYSUT00,OUTPUT)   :ABRE O ARQUIVO
+         TM    SYSUT00+48,X'10'   :ARQUIVO ABRIU COM SUCESSO?
+         BNO   S1_RETN            :...NAO. CONTINUA.
+         CLOSE (SYSUT00)          :FECHA O ARQUIVO
+*
+S1_RETN  EQU   *
+         LM    R0,R15,SAVEREGS    :RESTAURA OS REGISTRADORES
+         BR    R14                :R14-> SAIDA DA SUB-ROTINA E RETORNO
+*
+         TITLE 'SYS002 - ROTINAS FINAIS DO PROGRAMA'
+****---------------------------------------------------------------****
+* PROC: FINALIZACAO -> TERMINO COM SUCESSO                            *
+****---------------------------------------------------------------****
+P9_END   DS   0H
+         XC    RETNCODE,RETNCODE  :RETURN CODE = 0
+         B     P9_EOJ             :TERMINO DO PROGRAMA
+*---------------------------------------------------------------------*
+* PROC: FINALIZACAO -> RESTAURA COMPONENTES E TERMINA PROGRAMA        *
+*---------------------------------------------------------------------*
+P9_EOJ   DS   0H
+         L    R15,RETNCODE        :R15<- RETURN CODE
+         EXIT
+*
+         TITLE 'SYS002 - DEFINICAO  DAS  CONSTANTES  E  VARIAVEIS'
+*---------------------------------------------------------------------*
+* AREA: DEFINICAO DAS VARIAVEIS GLOBAIS DO PROGRAMA.                  *
+*---------------------------------------------------------------------*
+         CNOP  0,4
+         LTORG ,
+*
+         DS   0F
+SAVEAREA DS  18F                  :AREA DA LINKAGE SECTION
+SAVEREGS DS   16F                 :AREA DOS REGS. SUBROTINE
+RETNCODE DS    F                  :COD. DE RETORNO
+*
+SYSUT00  DCB   DDNAME=SYSUT01,                                         +
+               MACRF=PL,DSORG=PS
+*
+         DS   0F
+WRK#DBLE DC    D'0'
+WRK#PACK DC    PL2'0'
+DDN#FILE DS   0CL7
+         DC    CL5'SYSUT0'
+DDN#NUMR DC    CL2'00'
+*
+         END    ,
+/*
+//*
+//LKED.SYSLMOD  DD  DISP=SHR,DSN=ABC.LOADLIB
+//LKED.SYSIN DD *
+  NAME SYS002(R)
+//

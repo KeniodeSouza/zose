@@ -1,0 +1,649 @@
+//COMPS000   JOB   'CRIA SYS000',
+//           CLASS=A,MSGCLASS=R,MSGLEVEL=(1,1)
+//*
+//ASMHCL    PROC  RGN=4M,
+//            MEMBER=SYS000,
+//* ASSEMBLER PARM:
+//            ASMPRM='',
+//            MACLIB='SYS1.MACLIB',
+//            SRCLIB='SYS1.SAMPLIB',
+//* LINKEDIT PARM:
+//            LNKPRM=',MAP,PRINT,DCBS',
+//            LNKLIB='SYS1.LINKLIB',
+//            LODLIB='&&LOADLIB'
+//*
+//*********************************************************************
+//***                                                               ***
+//*      ESTA PROCEDURE CONTEM 2 STEPS:                               *
+//*        1. COMPILACAO ASSEMBLER DO PROGRAMA                        *
+//*        2. LINK-EDICAO DO PROGRAMA                                 *
+//***                                                               ***
+//*********************************************************************
+//*
+//*-------------------------------------------------------------------*
+//*           COMPILACAO DO PROGRAMA                                  *
+//*-------------------------------------------------------------------*
+//ASM       EXEC  PGM=ASMA90,REGION=&RGN,
+//          PARM='OBJECT,NODECK,TERM,XREF(SHORT)&ASMPRM'
+//SYSPRINT   DD   SYSOUT=*
+//SYSTERM    DD   DUMMY
+//SYSPUNCH   DD   SYSOUT=*
+//*
+//SYSLIB     DD   DISP=SHR,DSN=SYS1.MACLIB
+//           DD   DISP=SHR,DSN=&MACLIB
+//SYSUT1     DD   UNIT=VIO,SPACE=(1700,(500,50))
+//SYSLIN     DD   DSN=&&LOADSET,UNIT=SYSDA,DISP=(,PASS),
+//            BLKSIZE=27920,LRECL=80,RECFM=FB,DSORG=PS,BUFNO=30,
+//            SPACE=(TRK,(500,50))
+//SYSIN      DD   DISP=SHR,DSN=&SRCLIB(&MEMBER)
+//*
+//*-------------------------------------------------------------------*
+//*           LINK-EDICAO DO PROGRAMA                                 *
+//*-------------------------------------------------------------------*
+//LKED      EXEC  PGM=IEWL,COND=(05,LT,ASM),
+//          PARM='LET,LIST,CALL,XREF&LNKPRM'
+//SYSPRINT   DD   SYSOUT=*
+//*
+//SYSLIB     DD   DISP=SHR,DSN=SYS1.LINKLIB
+//           DD   DISP=SHR,DSN=&LNKLIB
+//*
+//SYSLIN     DD   DSN=&&LOADSET,DISP=(OLD,DELETE),BUFNO=30
+//           DD   DDNAME=SYSIN
+//SYSUT1     DD   UNIT=SYSDA,SPACE=(TRK,(400,40))
+//*
+//SYSLMOD    DD   DISP=SHR,DSN=&LODLIB(&MEMBER)
+//*
+//*********************************************************************
+//****************   E N D   O F   P R O C E D U R E   ****************
+//*********************************************************************
+//   PEND
+//*
+//COMPILER  EXEC ASMHCL
+//ASM.SYSIN     DD  *
+         PRINT ON,NOGEN
+*
+         TITLE 'SYS000 - DESCRICAO SUMARIO DO PROGRAMA.'
+***********************************************************************
+*                                                                     *
+*            SSSSS  y     y  SSSSS   00000   00000   00000            *
+*           S     S y     y S     S 00    0 00    0 00    0           *
+*           S        y   y  S       0 0   0 0 0   0 0 0   0           *
+*            SSSSS    yyy    SSSSS  0  0  0 0  0  0 0  0  0           *
+*                 S    y          S 0   0 0 0   0 0 0   0 0           *
+*           S     S    y    S     S 0    00 0    00 0    00           *
+*            SSSSS     y     SSSSS   00000   00000   00000            *
+*                                                                     *
+*---------------------------------------------------------------------*
+*                                                                     *
+*  Finalidade: Remover e descatalogar arquivos informados via PARM    *
+*              (tradicional) ou via DD SYSIN (opcional).              *
+*  Autor.....: Kenio de Souza                                         *
+*  Local/Data: Brasilia, Setembro/2014                                *
+*  Versao....: 1.0                                                    *
+*                                                                     *
+*---------------------------------------------------------------------*
+*  NOTA:                                                              *
+*  - Registradores geral:                                             *
+*    -Input : R1  - Endereco do parm;                                 *
+*             R13 - Endereco da savearea;                             *
+*             R14 - Endereco de retorno;                              *
+*             R15 - Endereco base inicial.                            *
+*    -Output: R15 - Return code: 0 - Execucao com sucesso.            *
+*                                8 - Erro de parametro                *
+*                               12 - Erro de arquivos                 *
+*    - Macros: CAMLST -                                               *
+*               LOCATE -                                              *
+*               SCRATCH-                                              *
+*               CATALOG-                                              *
+*                                                                     *
+*  - Informacoes de uso:                                              *
+*    - O dataset deve esta catalogado.                                *
+*                                                                     *
+*    - Forma de utilizacao - JCL                                      *
+*           //..  JOB ..                                              *
+*           //SYS000   EXEC PGM=SYS000,                               *
+*           //         PARM='formato'                                 *
+*           //SYSPRINT DD   SYSOUT=*                                  *
+*           //SYSIN    DD   DATA                                      *
+*                                                                     *
+*    - Utilizando PARM                                                *
+*      - Formato basico                                               *
+*        Informar os nomes completos dos arquivos, separados          *
+*        com virgula.                                                 *
+*      Exemplo:                                                       *
+*      PARM='BRP.SYS.SYS000.SS000101,BRP.SYS.SYS000.SS000104'         *
+*                                                                     *
+*      - Remove e descataloga os arquivos BRP.SYS.SYS000.SS000101 e   *
+*        BRP.SYS.SYS000.SS000104.                                     *
+*                                                                     *
+*      - Formato utilizando prefixo                                   *
+*        Utilizar o caracter '/' seguido dos caracteres iniciais      *
+*        comuns a todos os dsnames dos arquivos que serao excluidos.  *
+*        O prefixo sera valido ate o proximo caracter '/' ou ate o    *
+*        fim do PARM. Para anular o prefixo informado usar o          *
+*        caracter '/' seguido de virgula.                             *
+*                                                                     *
+*      Exemplo:                                                       *
+*      PARM='/ABC.SYS.SYS450.DATA,1,4'                                *
+*                                                                     *
+*      - Remover e descatalogar os arquivos ABC.SYS.SYS450.DATA1 e    *
+*        ABC.SYS.SYS450.DATA4.                                        *
+*                                                                     *
+*      PARM=('/ABC.SYS.SYS450.DATA,1,4',                              *
+*            '/,ABC.SYS.SYS510.DATA')                                 *
+*                                                                     *
+*      - Remove e descaloga os arquivos ABC.SYS.SYS450.DATA1,         *
+*        ABC.SYS.SYS450.DATA4 e ABC.SYS.SYS510.DATA.                  *
+*                                                                     *
+*      PARM=('/ABC.SYS.SYS450.DATA,1,4',                              *
+*          '/ABC.SYS.SYS510.DATA,1,4')                                *
+*                                                                     *
+*      - Remove e descaloga os arquivos ABC.SYS.SYS450.DATA1,         *
+*        ABC.SYS.SYS450.DATA4, ABC.SYS.SYS510.DATA1 e                 *
+*        ABC.SYS.SYS510.DATA4.                                        *
+*                                                                     *
+*                                                                     *
+*      - Formato utilizando sufixo                                    *
+*        Utilizar o caracter '*' seguido dos caracteres finais comuns *
+*        a todos os nomes dos arquivos que serao excluidos. O sufixo  *
+*        sera valido ate o proximo caracter '*' ou ate o fim do PARM. *
+*        Para anular o sufixo informado, usar o caracter '*' seguido  *
+*        de virgula.                                                  *
+*      Exemplo:                                                       *
+*                                                                     *
+*      PARM='*0.DATA,ABC.SYS.SYS45,ABC.SYS.SYS43'                     *
+*      - Remover e descatalogar os arquivos ABC.SYS.SYS450.DATA e     *
+*        ABC.SYS.SYS430.DATA.                                         *
+*                                                                     *
+*      PARM=('*0.DATA,ABC.SYS.SYS43,BRP.SYS.SYS45',                   *
+*            '*0.DATA,ABC.SYS.SYS53 ,BRP.SYS.SYS55')                  *
+*      - Remover e descatalogar os arquivos ABC.SYS.SYS430.DATA,      *
+*        ABC.SYS.SYS450.DATA, ABC.SYS.SYS530.DATA e                   *
+*        ABC.SYS.SYS550.DATA.                                         *
+*                                                                     *
+*      PARM=('*0.DATA,ABC.SYS.SYS43,ABC.SYS.SYS45',                   *
+*            '*,ABC.SYS.SYS530.DATA')                                 *
+*      - Remover e descatalogar os arquivos ABC.SYS.SYS430.DATA,      *
+*        ABC.SYS.SYS450.DATA e ABC.SYS.SYS530.DATA.                   *
+*                                                                     *
+*      - Formato utilizando prefixo e sufixo                          *
+*        Informar o prefixo e sufixo, conforme indicado acima, a      *
+*        ordem de prefixo/sufixo e' indiferente.                      *
+*      Exemplo:                                                       *
+*      PARM='/ABC.SYS.SYS,*.DATA,430,450,530,550' ou                  *
+*      PARM='*.DATA,/ABC.SYS.SYS,430,450,530,550'                     *
+*      - Remover e descatalogar os arquivos ABC.SYS.SYS430.DATA,      *
+*        ABC.SYS.SYS450.DATA, ABC.SYS.SYS530.DATA e                   *
+*        ABC.SYS.SYS550.DATA.                                         *
+*                                                                     *
+*      - Formato utilizando SYSIN                                     *
+*        Permite a exclusao de um maior numero de arquivos em uma     *
+*        unico passo (STEP);                                          *
+*       - O PARM deve ser informado com o conteudo 'SYSIN';           *
+*          - Os comandos de exclusao podem ser informados no 'SYSIN'. *
+*            Nao e' permitido usar prefixo/sufixo e os nomes dos      *
+*            arquivos devem ser informados na integra, antecedido do  *
+*            comando 'DELETE';                                        *
+*          - Informar um comando por linha;                           *
+*          - Comentarios podem ser incluidos, colocando o caracter    *
+*            '*' na primeira posicao.                                 *
+*      Exemplo:                                                       *
+*         //SYS000   EXEC PGM=SYS000,PARM=SYSIN                       *
+*         //SYSIN    DD   DATA                                        *
+*            DELETE   ABC.SYS.SYS430.DATA                             *
+*            DELETE   ABC.SYS.SYS431.DATA                             *
+*            DELETE   ABC.SYS.SYS432.DATA                             *
+*         /*                                                          *
+*                                                                     *
+*   - Utilizando DD                                                   *
+*     SYSIN - Arquivo opcional com comandos para exclusão dos         *
+*             arquivos com formato: LRECL=080, RECFM=FB, DSORG=PS     *
+*     SYSPRINT - Arquivo opcional para exibição das mensagens de      *
+*                ocorrências, com formato: LRECL=080, RECFM=FB,       *
+*                DSORG=PS                                             *
+*                                                                     *
+***********************************************************************
+         COPY ASM@MACR
+*
+         TITLE 'SYS000 - ROTINAS INICIAIS DO PROGRAMA'
+*---------------------------------------------------------------------*
+* PROC: ROTINA DE INICIALIZACAO COM LINKAGE SECTION INICIAL           *
+*---------------------------------------------------------------------*
+SIS000   ENTER SAVEAREA
+*
+*---------------------------------------------------------------------*
+* PROC: INICIALIZACAO -> RECEPCAO DE PARAMETROS                       *
+*---------------------------------------------------------------------*
+P0_INIT  DS   0H
+         LTR   R1,R1              :R1-> EXISTE PARAMETRO?
+         BZ    E1_PARM            :...NAO. ERRO DE PARAMETRO
+         L     R1,0(,R1)          :R1<-R1. APONTA ENDERECOS DO PARM
+         N     R1,=XL4'7FFFFFFF'  :R1-> PARM EXISTE?
+         BZ    E1_PARM            :...NAO. ERRO DE PARAMETRO
+         LH    R5,0(,R1)          :R5<- SALVA O TAMANHO DO PARM
+         LTR   R5,R5              :R5-> TAMANHO DO PARM ESTA ZERADO?
+         BZ    E1_PARM            :...SIM. ERRO DE PARAMETRO
+         CH    R5,=H'120'         :R5-> TAMANHO DO PARM ESTOUROU?
+         BNL   E1_PARM            :...SIM. ERRO DE PARAMETRO
+         LA    R6,2(,R1)          :R6<- ENDERECO DO DADOS DO PARM
+*
+P0_OPEN  EQU   *
+         OPEN  (SYSPRINT,OUTPUT)  :ABRE O ARQUIVO
+         TM    SYSPRINT+48,X'10'  :ARQUIVO ABRIU COM SUCESSO?
+         BNO   P1_PROC            :...NAO. CONTINUA.
+*---
+*   PRINT - CAPTURA DA DATE/TIME DO SISTEMA
+*---
+         TIME  DEC,SYS#STOK,DATETYPE=DDMMYYYY,LINKAGE=SYSTEM
+         UNPK  SYS#DATE(9),SYS#STOK+8(5)    :DESCOMPACTA A DATA
+         UNPK  SYS#TIME,SYS#STOK(5)         :DESCOMPACTA A HORA
+         OI    SYS#TIME+(L'SYS#TIME-1),C'0' :DESLIGA O BIT
+         MVC   OUT#DATE(2),SYS#DATE         :MOVE DATE SYSTEM
+         MVC   OUT#DATE+3(2),SYS#DATE+2     :.. DATE SYSTEM
+         MVC   OUT#DATE+6(4),SYS#DATE+4     :.. DATE SYSTEM
+         MVC   OUT#TIME(2),SYS#TIME         :MOVE TIME SYSTEM
+         MVC   OUT#TIME+3(2),SYS#TIME+2     :.. TIME SYSTEM
+         MVC   OUT#TIME+6(2),SYS#TIME+4     :.. TIME SYSTEM
+*---
+*   PRINT - EXTRAI O JOB NAME
+*---
+EXTRACT  EXTRACT TIOTADDR,'S',FIELDS=TIOT EXTRACT THE ADDR OF THE TIOT
+         L     R3,TIOTADDR        :R3<- ENDERECO DA TIOT
+         USING TIOT,R3            :APONTA A TIOT
+         MVC   OUT#JOBN,TIOCNJOB  :SAVE O JOBNAME
+         DROP  R3                 :REMOVE O APONTAMENTO DA TIOT
+*---
+*   PRINT - IMPRIME O CABECALHO
+*---
+         PUT   SYSPRINT,OUT#CAB1  :IMPRIME
+         PUT   SYSPRINT,OUT#CAB2  :   AS LINHAS
+         PUT   SYSPRINT,OUT#CAB3  :     DO CABECALHO
+         PUT   SYSPRINT,OUT#CAB4  :       DAS OCORRENCIAS
+*
+         TITLE 'SYS000 - PROCESSAMENTO DE PARM E SYSIN'
+*---------------------------------------------------------------------*
+* PROC: PROCESSAMENTO -> VERIFICA O PARM                              *
+*---------------------------------------------------------------------*
+P1_PROC  DS   0H
+*--------
+         CLC   =CL5'SYSIN',0(R6)  :PARM EH SYSIN?
+         BE    P2_SYSIN           :...SIM. PROCESSA SYSIN.
+*---
+*   PARM - MONTA O DATASET DE PARAMETROS
+*---
+P1_PARM  DS   0H
+         LR    R3,R6              :R3<- ENDERECO DE ORIGEM
+         XR    R4,R4              :R4<- ZERA O TAMANHO DO ITEM
+*
+P1_LOOP  EQU   *
+         CLI   0(R6),C' '         :R6-> CARACTER EH ESPACO?
+         BE    P1_LNEXT           :...SIM, SALTA PARA PROXIMO ENDERECO
+         CLI   0(R6),C','         :R6-> CARACTER EH VIRGULA?
+         BNE   P1_LVHLQ           :...NAO, CHECA SE EH HLQ
+*
+P1_LPHLQ EQU   *
+         CLC   HLQ#LENG,=F'1'     :INDICADOR DE HQL LIGADO?
+         BNE   P1_LPLLQ           :...NAO, CONTINUA
+         LTR   R4,R4              :R4<- ESTA ZERADO?
+         BNZ   P1_LPHL1           :...NAO. SALVA DADOS.
+         XC    HLQ#LENG,HLQ#LENG  :ZERA VARIAVEL.
+         B     P1_LPLLQ           :CONTINUA.
+P1_LPHL1 EQU   *
+         LA    R2,HLQ#NAME        :R2<- ENDERECO DE DESTINO
+         BCTR  R4,0               :R4<- DESCONTA OFFSET
+         EX    R4,MOVE#TO         :R4-> MOVE PARM P/ HLQ
+         ST    R4,HLQ#LENG        :R4-> SALVA O TAMANHO DE HLQ
+         LA    R3,1(,R6)          :R3<- ENDERECO DE ORIGEM
+         XR    R4,R4              :R4<- ZERA O TAMANHO DO ITEM
+         B     P1_LNEXT           :VA P/ NOVO ENDERECO
+*
+P1_LPLLQ EQU   *
+         CLC   LLQ#LENG,=F'1'     :INDICADOR DE LLQ LIGADO?
+         BNE   P1_LPDSN           :...NAO, CONTINUA
+         LTR   R4,R4              :R4<- ESTA ZERADO?
+         BNZ   P1_LPLL1           :...NAO. SALVA DADOS.
+         XC    LLQ#LENG,LLQ#LENG  :ZERA VARIAVEL.
+         B     P1_LPDSN           :CONTINUA.
+P1_LPLL1 EQU   *
+         LA    R2,LLQ#NAME        :R2<- ENDERECO DE DESTINO
+         BCTR  R4,0               :R4<- DESCONTA OFFSET
+         EX    R4,MOVE#TO         :R4-> MOVE PARM P/ LLQ
+         ST    R4,LLQ#LENG        :R4-> SALVA O TAMANHO DE LLQ
+         LA    R3,1(,R6)          :R3<- ENDERECO DE ORIGEM
+         XR    R4,R4              :R4<- ZERA O TAMANHO DO ITEM
+         B     P1_LNEXT           :VA P/ NOVO ENDERECO
+*
+P1_LPDSN EQU   *
+         BAL   R14,S1_DSET        :R14-> SUB-ROTINA MONTA O DSNAME
+         BAL   R14,S2_REMV        :R14-> EXECUTA SUB-ROTINA
+         LA    R3,1(,R6)          :R3<- ENDERECO DE ORIGEM
+         XC    DST#LENG,DST#LENG  :ZERA TAMANHO DO ITEM
+         MVI   DST#NAME,X'40'     :LIMPA AREA DE DADOS
+         MVC   DST#NAME+1(L'DST#NAME-1),DST#NAME
+         XR    R4,R4              :R4<- ZERA O TAMANHO DO ITEM
+         B     P1_LNEXT           :VA P/ NOVO ENDERECO
+*
+P1_LVHLQ EQU   *                  CHECA SE HLQ FOI INFORMADO
+         CLI   0(R6),C'/'         :PARAMETRO DE HLQ?
+         BNE   P1_LVLLQ           :...NAO, CONTINUA
+         LA    R3,1(,R6)          :R3<- ENDERECO DE ORIGEM
+         MVC   HLQ#LENG,=F'1'     :INDICA PARAMETRO
+         MVI   HLQ#NAME,X'40'     :LIMPA AREA DE DADOS
+         MVC   HLQ#NAME+1(L'HLQ#NAME-1),HLQ#NAME
+         B     P1_LNEXT           :VA P/ NOVO ENDERECO
+*
+P1_LVLLQ EQU   *                  CHECA SE LLQ FOI INFORMADO
+         CLI   0(R6),C'*'         :PARAMETRO DE LLQ?
+         BNE   P1_LLENG           :...NAO, CONTINUA
+         LA    R3,1(,R6)          :R3<- ENDERECO DE ORIGEM
+         MVC   LLQ#LENG,=F'1'     :INDICA PARAMETRO
+         MVI   LLQ#NAME,X'40'     :LIMPA AREA DE DADOS
+         MVC   LLQ#NAME+1(L'LLQ#NAME-1),LLQ#NAME
+         B     P1_LNEXT           :VA P/ NOVO ENDERECO
+*
+P1_LLENG EQU   *
+         LA    R4,1(,R4)          :R4<- TAMANHO DO PARAMETRO
+*
+P1_LNEXT EQU   *                  PROXIMO ENDERECO CONTROLE DE LACO
+         LA    R6,1(,R6)          :R6<- PROXIMO ENDERECO DO PARM
+         BCT   R5,P1_LOOP         :R5<- CONTROLE DE LACO
+*
+         BAL   R14,S1_DSET        :R14-> EXECUTA SUB-ROTINA
+         BAL   R14,S2_REMV        :R14-> EXECUTA SUB-ROTINA
+         B     P9_END             :TERMINO DO PROGRAMA
+*
+         TITLE 'SYS000 - PROCESSAMENTO DE SYSIN'
+*---------------------------------------------------------------------*
+* PROC: PROCESSAMENTO -> VERIFICA O SYSIN                             *
+*---------------------------------------------------------------------*
+P2_SYSIN EQU   *
+         OPEN  (SYSIN,INPUT)      :ABRE O ARQUIVO
+         TM    SYSIN+48,X'10'     :ARQUIVO ABRIU COM SUCESSO?
+         BNO   E2_FILE            :...NAO. ROTINA DE ERRO.
+*
+P2_READ  EQU   *
+         GET   SYSIN              :BUSCA UM REGISTRO DE ENTRADA
+         CLC   0(80,R1),=CL80' '  :COMPARA COM BRANCOS
+         BE    P2_READ            :...SIM. BUSCA OUTRO REGISTRO
+         CLI   0(R1),C'*'         :COMPARA COM ASTERISCOS?
+         BE    P2_READ            :...SIM. BUSCA OUTRO REGISTRO
+*
+         XC    FLG#FULL,FLG#FULL  :ZERA VARIAVEIS
+         LA    R2,77              :R2 <- TAMANHO DO REGISTRO
+         LR    R3,R1              :R3 <- R1. ENDERECO DO REGISTRO
+*
+P2_READL EQU   *
+         CLC   FLG#FULL,=F'00'    :FLAG DE COMANDO?
+         BNE   P2_READC           :...NAO. VERIFICA COMANDO
+         CLI   0(R3),C' '         :CARACTER EH BRANCO?
+         BE    P2_READN           :...SIM. PROXIMO ENDERECO
+         CLC   =C'DELETE ',0(R3)  :ID. DO COMANDO
+         BNE   P2_READN           :
+         MVC   FLG#FULL,=F'01'    :
+         LA    R3,7(,R3)          :SALTA COMANDO
+         B     P2_READN           :
+*
+P2_READC EQU   *
+         CLC   FLG#FULL,=F'01'    :FLAG DE DSNAME?
+         BNE   P2_READD           :...NAO. VERIFICA
+         CLI   0(R3),C' '         :CARACTER EH BRANCO?
+         BE    P2_READN           :...SIM. PROXIMO ENDERECO
+         MVC   FLG#FULL,=F'02'    :APONTA FLAG DE DSNAME
+         LA    R5,DSNAME          :R5<- ENDERECA DSNAME
+*
+P2_READD EQU   *
+         CLI   0(R3),C' '         :CARACTER EH BRANCO?
+         BNE   P2_READS           :..NAO. MONTA DSNAME
+         BAL   R14,S2_REMV        :R14-> EXECUTA SUB-ROTINA
+         B     P2_READ            :LE PROXIMO REGISTRO
+*
+P2_READS EQU   *
+         MVC   0(1,R5),0(R3)      :SALVA O CARACTER PARA DSNAME
+         LA    R5,1(,R5)          :R5<- PROXIMO ENDERECO
+*
+P2_READN EQU   *
+         LA    R3,1(,R3)          :R3<- PROXIMO ENDERECO
+         BCT   R2,P2_READL        :R2<- CONTROLE DE LACO
+         B     P2_READ            :LE PROXIMO REGISTRO
+*
+P2_CLOSE EQU   *
+         CLOSE (SYSIN)            :FECHA O ARQUIVO
+         B     P9_END             :TERMINO DO PROGRAMA
+*
+         TITLE 'SYS000 - DEFINICAO  DAS  SUB-ROTINAS'
+*---------------------------------------------------------------------*
+* SUB: MONTA O NOME DOS DATASET                                       *
+*---------------------------------------------------------------------*
+*  INPUT : NENHUM                                                     *
+*  OUTPUT: R14: RETORNO A CHAMADA.                                    *
+*---------------------------------------------------------------------*
+S1_DSET  DS   0H
+         STM   R0,R15,SAVEREGS    :SALVA OS REGISTRADORES
+*
+         LTR   R4,R4              :R4<- ESTA ZERADO?
+         BZ    S1_DBEG            :...SIM. CONTINUA.
+         LA    R2,DST#NAME        :R2<- ENDERECO DE DESTINO
+         BCTR  R4,0               :R4<- DESCONTA OFFSET
+         EX    R4,MOVE#TO         :R4-> MOVE PARM P/ DST
+         ST    R4,DST#LENG        :R4-> SALVA O TAMANHO DE DST
+*
+S1_DBEG  EQU   *
+         LA    R2,DSNAME          :R2<- ENDERECO DE DESTINO
+         MVI   DSNAME,X'40'       :LIMPA AREA DE DADOS
+         MVC   DSNAME+1(L'DSNAME-1),DSNAME
+*
+S1_DHLQ  EQU   *
+         CLC   HLQ#LENG,=F'0'     :EXISTE HLQ INFORMADO?
+         BE    S1_DDST            :...NAO. CONTINUA
+         LA    R3,HLQ#NAME        :R3<- ENDERECO DE ORIGEM
+         L     R4,HLQ#LENG        :R4<- TAMANHO DE ORIGEM
+         EX    R4,MOVE#TO         :R4-> MOVE PARM P/ DST
+         LA    R2,1(R4,R2)        :R2<- PROXIMO ENDERECO DESTINO
+*
+S1_DDST  EQU   *
+         CLC   DST#LENG,=F'0'     :EXISTE DSET INFORMADO?
+         BE    S1_DLLQ            :...NAO. CONTINUA
+         LA    R3,DST#NAME        :R3<- ENDERECO DE ORIGEM
+         L     R4,DST#LENG        :R4<- TAMANHO DE ORIGEM
+         EX    R4,MOVE#TO         :R4-> MOVE PARM P/ DST
+         LA    R2,1(R4,R2)        :R2<- PROXIMO ENDERECO DESTINO
+*
+S1_DLLQ  EQU   *
+         CLC   LLQ#LENG,=F'0'     :EXISTE LLQ INFORMADO?
+         BE    S1_RETN            :...NAO. CONTINUA
+         LA    R3,LLQ#NAME        :R3<- ENDERECO DE ORIGEM
+         L     R4,LLQ#LENG        :R4<- TAMANHO DE ORIGEM
+         EX    R4,MOVE#TO         :R4-> MOVE PARM P/ DST
+*
+S1_RETN  EQU   *
+         LM    R0,R15,SAVEREGS    :RESTAURA OS REGISTRADORES
+         BR    R14                :R14-> SAIDA DA SUB-ROTINA E RETORNO
+*
+*---------------------------------------------------------------------*
+* SUB: TRATA DO ARQUIVO: EXISTENCIA, DESCATALOGACAO E EXCLUSAO.       *
+*---------------------------------------------------------------------*
+S2_REMV  DS   0H
+         STM   R0,R15,SAVEREGS    :SALVA OS REGISTRADORES
+*
+         MVC  OUT#DSET(44),DSNAME :MOVE DATASET P/ SYSPRINT
+         LOCATE  DSNINFO
+         LTR   R15,R15            :R15-> RET.CODE ZERADO?
+         BZ    S2_UNCAT           :...SIM. CONTINUA
+         MVC   OUT#DMSG,=CL30'Nao localizado no Catalogo'
+         B     S2_PRNTM
+*
+S2_UNCAT DS   0H
+         CATALOG DSNUCAT
+         LTR   R15,R15            :R15-> RET.CODE ZERADO?
+         BZ    S2_delet           :...SIM. SAI DA SUB-ROTINA
+         MVC   OUT#DMSG,=CL30'Nao foi possivel descatalogar'
+         B     S2_PRNTM           :IMPRIME MENSAGEM
+*
+S2_DELET DS   0H
+         SCRATCH DSNDELT
+         LTR   R15,R15            :R15-> RET.CODE ZERADO?
+         BZ    S2_PRINT           :...NAO. SAI DA SUB-ROTINA
+         MVC   OUT#DMSG,=CL30'Nao foi possivel deletar'
+         B     S2_PRNTM           :IMPRIME MENSAGEM
+*
+S2_PRINT DS   0H
+         TM    SYSPRINT+48,X'10'  :ARQUIVO ESTA ABERTO?
+         BNO   S2_RETN            :...NAO. SALTA IMPRESSAO
+*
+         LH    R4,VOL#NVOL        :R4<-SALVA NRO. DE VOLUMES
+         LA    R5,VOL#INFO        :R5<-ENDERECA A AREA DOS VOLUMES
+*
+S2_PRVOL EQU   *
+         MVC   OUT#DMSG,=CL30'Deletado do volume XXXXXX'
+         MVC   OUT#DMSG+19(6),4(R5)
+         PUT   SYSPRINT,OUT#DET   :GRAVA REGISTRO NO ARQUIVO
+         MVI   OUT#DSET,X'40'     :LIMPA O NOME DO DSNAME
+         MVC   OUT#DSET+1(L'OUT#DSET-1),OUT#DSET
+*
+         LA    R5,12(,R5)         :R5<- PROXIMO BLOCO DEVICE
+         BCT   R4,S2_PRVOL        :R4<- CONTROLE DE LACO
+         MVC   OUT#DMSG,=CL30'Descatalogado'
+*
+S2_PRNTM DS   0H
+         TM    SYSPRINT+48,X'10'  :ARQUIVO ESTA ABERTO?
+         BNO   S2_RETN            :...NAO. SALTA IMPRESSAO
+         PUT   SYSPRINT,OUT#DET   :GRAVA REGISTRO NO ARQUIVO
+*
+S2_RETN  DS   0H
+         LM    R0,R15,SAVEREGS    :RESTAURA OS REGISTRADORES
+         BR    R14                :R14-> SAIDA DA SUB-ROTINA E RETORNO
+*
+         TITLE 'SYS000 - TRATAMENTOS DOS ERROS'
+*---------------------------------------------------------------------*
+* SUB: ERRO -> PARAMETRO INFORMADO NAO EXISTE OU INVALIDO.            *
+*---------------------------------------------------------------------*
+E1_PARM  DS   0H
+         WTO   '*** ERRO - PARAMETRO INVALIDO OU NAO INFORMADA'
+         MVC   RETNCODE,=F'8'     :RETURN CODE = 8
+         B     P9_EOJ             :TERMINO DO PROGRAMA
+*---------------------------------------------------------------------*
+* SUB: ERRO -> ABERTURA DO SYSIN OCORREU COM ERRO.                    *
+*---------------------------------------------------------------------*
+E2_FILE  DS   0H
+         WTO   '*** ERRO - NAO FOI POSSIVEL ABRIR SYSIN'
+         MVC   RETNCODE,=F'12'    :RETURN CODE = 12
+         B     P9_EOJ             :TERMINO DO PROGRAMA
+*
+         TITLE 'SYS000 - ROTINAS FINAIS DO PROGRAMA'
+*---------------------------------------------------------------------*
+* PROC: FINALIZACAO -> RESTAURA COMPONENTES E TERMINA PROGRAMA        *
+*---------------------------------------------------------------------*
+P9_END   DS   0H
+         XC    RETNCODE,RETNCODE  :RETURN CODE = 0
+         TM    SYSPRINT+48,X'10'  :ARQUIVO ESTA ABERTO?
+         BNO   P9_EOJ             :...NAO. CONTINUA.
+         CLOSE (SYSPRINT)
+*
+P9_EOJ   EQU   *                ***  L I N K A G E   S E C T I O N  ***
+         L     R15,RETNCODE       :R15<- RETURN CODE
+         EXIT  SAVEAREA
+*
+* ***------------------------------------------------------------*** *
+* * AREA: DEFINICAO DAS VARIAVEIS COMUNS PARA TODO O PROGRAMA.     * *
+* ***------------------------------------------------------------*** *
+MOVE#TO  MVC  0(0,R2),0(R3)       :MOVE PARM PARA VARIAVEL INTERNA
+         LTORG  ,
+*
+SAVEAREA DS   18F                 :AREA DA LINKAGE SECTION
+SAVEREGS DS   16F                 :AREA DOS REGS. SUBROTINE 1
+TIOTADDR DS     F                 :AREA RESPOSTA EXTRACT
+RETNCODE DC     F'0'              :CODIGO DE RETORNO
+FLG#FULL DC     F'0'              :FLAG DE USO GENERICO
+*
+SYS#STOK DS    CL16               :DATE/TIME DO SISTEMA
+SYS#DATE DC    CL08' '            :DATA DO SISTEMA(DDMMAAAA)
+SYS#TIME DC    CL09' '            :TEMPO DO SISTEMA(HHMMSSDDD)
+*---
+*   PRINT - DEFINICAO DA LINHAS DO RELATORIO
+*---
+OUT#CAB1 DS    0CL81
+         DC     CL01'1'           :ASA= Salta proxima pagina
+         DC     CL34'SYS000 - Scratch/Uncatlg Data sets'
+         DC     CL22' '
+         DC     CL05'Data:'
+OUT#DATE DC     CL10'DD/MM/AAAA'  :Data do sistema
+         DC     CL09' '
+*
+OUT#CAB2 DS    0CL81
+         DC     CL01' '           :ASA= Salta 1 linha
+         DC     CL04'Job:'
+OUT#JOBN DC     CL08' '           :Nome deste JOBNAME
+         DC     CL44' '
+         DC     CL05'Hora:'
+OUT#TIME DC     CL08'HH:MM:SS'    :Horario do sistema
+         DC     CL11' '
+*
+OUT#CAB3 DS    0CL81
+         DC     CL01'0'           :ASA= Salta 2 linhaS
+         DC     CL17'Nome do Data sets'
+         DC     CL28' '
+         DC     CL11'Ocorrencias'
+         DC     CL24' '
+*
+OUT#CAB4 DS    0CL81
+         DC     CL01' '           :ASA= Salta 1 linha
+         DC   72C'-'
+         DC     CL08' '
+*
+OUT#DET  DS    0CL81
+         DC     CL01' '           :ASA= Salta 1 linha
+OUT#DSET DC     CL44' '           :Nome do dataset
+         DC     CL01' '
+OUT#DMSG DC     CL30' '           :Mensagem de ocorrencia
+         DC     CL05' '
+*
+SYSIN    DCB   DDNAME=SYSIN,                                           +
+               MACRF=GL,DSORG=PS,RECFM=F,LRECL=080,                    +
+               EODAD=P2_CLOSE
+*
+SYSPRINT DCB   DDNAME=SYSPRINT,                                        +
+               MACRF=PM,DSORG=PS,RECFM=FA,LRECL=080
+*---
+*    CAMLST - DEFINICAO DAS VARIAVES E AREA PARA O CAMLST
+*---
+         DS    0F
+DSNINFO  CAMLST NAME,DSNAME,,VOL#AREA
+DSNUCAT  CAMLST UNCAT,DSNAME
+DSNDELT  CAMLST SCRATCH,DSNAME,,VOL#AREA,,OVRD
+DSNAME   DC     CL44' '           :NOME COMPLETO DO DATASET
+VOL#AREA DS    0D
+VOL#NVOL DS     H'00'             :NRO. DE VOLUMES
+VOL#INFO DS  263X'00'             :DETALHES DOS VOLUMES
+*               Nro. de 12 bytes que ocorrem ate 21 vezes
+*               para multi-volumes datasets
+*        DEVCODE XL4
+*        VOLSER  CL6
+*        FILE    H
+         DS  256X
+*---
+*    PARM - AREA DE TRATAMENTO DO PARM
+*---
+         DS    0F
+HLQ#LENG DC     F'0'              :TAMANHO DO HLQ#NAME
+HLQ#NAME DC     CL44' '           :HLQ DOS DATASET'S
+*
+LLQ#LENG DC     F'0'              :TAMANHO DO LLQ#NAME
+LLQ#NAME DC     CL44' '           :LLQ DOS DATASET'S
+*
+DST#LENG DC     F'0'              :TAMANHO DO DST#NAME
+DST#NAME DC     CL44' '           :NOME COMPLETO/PARCIAL DO DATASET
+*
+         TITLE 'SYS000 - DEFINICAO DAS DUMMY SECTIONS'
+***----------------------------------------------------------------***
+*  DSECT: DEFINICAO DAS DUMMY SECTIONS                               *
+***----------------------------------------------------------------***
+TIOT     DSECT
+         IEFTIOT1
+*
+         END ,
+/*
+//*
+//LKED.SYSLMOD  DD  DISP=SHR,DSN=ABC.LOADLIB
+//LKED.SYSIN DD *
+  NAME SYS000(R)
+//

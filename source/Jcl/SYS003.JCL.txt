@@ -1,0 +1,24 @@
+//EXECS003  JOB   'EXECUTA PROGRAMA SYS003',
+//           COND=((12,EQ),(16,EQ),(888,EQ)),
+//           CLASS=A,MSGCLASS=R,MSGLEVEL=(1,1)
+//*
+//*-------------------------------------------------------------------*
+//EXECUTAR  EXEC PGM=SYS003,
+//          PARM=('SYSIN')
+//*         PARM=('A1=V1,A02=V02,A003=V003,A0004=V0004,A00005=V00005')
+//*
+//SYSOUT     DD  SYSOUT=*
+//SYSPRINT   DD  SYSOUT=*
+//*
+//SYSIN      DD  *
+A1=V1
+A2=V00002
+A3=V003
+/*
+//SYSUT1     DD  *
+XXXXXXXXX&A1,YYYYYY&A2,ZZZZZZ&A3.
+/*
+//*
+//SYSUT2     DD  SYSOUT=*
+//*
+//

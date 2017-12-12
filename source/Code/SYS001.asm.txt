@@ -1,0 +1,301 @@
+//COMPS001  JOB  'CRIA O PROGRAMA SYS001',
+//           CLASS=A,MSGCLASS=R,MSGLEVEL=(1,1)
+//*
+//ASMHCL    PROC  RGN=4M,
+//            MEMBER=SYS001,
+//* ASSEMBLER PARM:
+//            ASMPRM='',
+//            MACLIB='SYS1.MACLIB',
+//            SRCLIB='SYS1.SAMPLIB',
+//* LINKEDIT PARM:
+//            LNKPRM=',MAP,PRINT,DCBS',
+//            LNKLIB='SYS1.LINKLIB',
+//            LODLIB='&&LOADLIB'
+//*
+//*********************************************************************
+//***                                                               ***
+//*      ESTA PROCEDURE CONTEM 2 STEPS:                               *
+//*        1. COMPILACAO ASSEMBLER DO PROGRAMA                        *
+//*        2. LINK-EDICAO DO PROGRAMA                                 *
+//***                                                               ***
+//*********************************************************************
+//*
+//*-------------------------------------------------------------------*
+//*           COMPILACAO DO PROGRAMA                                  *
+//*-------------------------------------------------------------------*
+//ASM       EXEC  PGM=ASMA90,REGION=&RGN,
+//          PARM='OBJECT,NODECK,TERM,XREF(SHORT)&ASMPRM'
+//SYSPRINT   DD   SYSOUT=*
+//SYSTERM    DD   DUMMY
+//SYSPUNCH   DD   SYSOUT=*
+//*
+//SYSLIB     DD   DISP=SHR,DSN=SYS1.MACLIB
+//           DD   DISP=SHR,DSN=&MACLIB
+//SYSUT1     DD   UNIT=VIO,SPACE=(1700,(500,50))
+//SYSLIN     DD   DSN=&&LOADSET,UNIT=SYSDA,DISP=(,PASS),
+//            BLKSIZE=27920,LRECL=80,RECFM=FB,DSORG=PS,BUFNO=30,
+//            SPACE=(TRK,(500,50))
+//SYSIN      DD   DISP=SHR,DSN=&SRCLIB(&MEMBER)
+//*
+//*-------------------------------------------------------------------*
+//*           LINK-EDICAO DO PROGRAMA                                 *
+//*-------------------------------------------------------------------*
+//LKED      EXEC  PGM=IEWL,COND=(05,LT,ASM),
+//          PARM='LET,LIST,CALL,XREF&LNKPRM'
+//SYSPRINT   DD   SYSOUT=*
+//*
+//SYSLIB     DD   DISP=SHR,DSN=SYS1.LINKLIB
+//           DD   DISP=SHR,DSN=&LNKLIB
+//*
+//SYSLIN     DD   DSN=&&LOADSET,DISP=(OLD,DELETE),BUFNO=30
+//           DD   DDNAME=SYSIN
+//SYSUT1     DD   UNIT=SYSDA,SPACE=(TRK,(400,40))
+//*
+//SYSLMOD    DD   DISP=SHR,DSN=&LODLIB(&MEMBER)
+//*********************************************************************
+//****************   E N D   O F   P R O C E D U R E   ****************
+//*********************************************************************
+//   PEND
+//*
+//EXECUTE   EXEC ASMHCL
+//ASM.SYSIN     DD  *
+         PRINT ON,NOGEN
+*
+         TITLE 'SYS001 - DESCRICAO SUMARIA DO PROGRAMA.'
+***********************************************************************
+*                                                                     *
+*            SSSSS  Y     Y  SSSSS   00000   00000     1              *
+*           S     S Y     Y S     S 00    0 00    0   11              *
+*           S        Y   Y  S       0 0   0 0 0   0  1 1              *
+*            SSSSS    YYY    SSSSS  0  0  0 0  0  0    1              *
+*                 S    Y          S 0   0 0 0   0 0    1              *
+*           S     S    Y    S     S 0    00 0    00    1              *
+*            SSSSS     Y     SSSSS   00000   00000   11111            *
+*                                                                     *
+*---------------------------------------------------------------------*
+*                                                                     *
+*  Finalidade: Verificar existencia de arquivo informado via PARM.    *
+*              Retorna no SYSPRINT, o nome do arquivo e volumes       *
+*              alocados.                                              *
+*  Autor.....: Kenio de Souza                                         *
+*  Local/Data: Brasilia, Julho/2014                                   *
+*  Versao....: 1.0                                                    *
+*                                                                     *
+*---------------------------------------------------------------------*
+*  NOTA:                                                              *
+*   - Registradores geral:                                            *
+*     -Input : R1  - Endereco do Parm;                                *
+*              R13 - Endereco da savearea;                            *
+*              R14 - Endereco de retorno;                             *
+*              R15 - Endereco base inicial.                           *
+*     -Output: R15 - Return code: 0 - Dataset encontrado              *
+*                                 1 - Dataset nao encontrado          *
+*                                12 - Parm nao informado              *
+*     - MACROS: LOCATE -                                              *
+*               CAMLST -                                              *
+*                                                                     *
+*     - Informacoes de uso:                                           *
+*       - O dataset de pesquisa deve esta catalogado.                 *
+*                                                                     *
+*       - Forma de utilizacao - JCL                                   *
+*         //..  JOB ..                                                *
+*         //SYS001   EXEC  PGM=SYS001,                                *
+*         //         PARM='NOME.DO.ARQUIVO'                           *
+*         //SYSPRINT DD SYSOUT=*                                      *
+*                                                                     *
+*       - Utilizando PARM                                             *
+*         Informar o nome completo do arquivo.                        *
+*                                                                     *
+*       - Utilizando DD                                               *
+*         SYSPRINT - Arquivo opcional para exibição das mensagens de  *
+*                    ocorrências, com formato: LRECL=080, RECFM=FB,   *
+*                    DSORG=PS.                                        *
+*                                                                     *
+***********************************************************************
+         COPY ASM@MACR
+*
+         TITLE 'SYS001 - ROTINAS INICIAIS DO PROGRAMA'
+*---------------------------------------------------------------------*
+* PROC: ROTINA DE INICIALIZACAO COM LINKAGE SECTION INICIAL           *
+*---------------------------------------------------------------------*
+SIS001   ENTER SAVEAREA
+*
+*---------------------------------------------------------------------*
+* PROC: INICIALIZACAO -> RECEPCAO DE PARAMETROS                       *
+*---------------------------------------------------------------------*
+P1_INIT  DS   0H
+         LTR   R1,R1              :R1-> EXISTE PARAMETRO?
+         BZ    E1_PARM            :...NAO. ERRO DE PARAMETRO
+         L     R1,0(,R1)          :R1<-R1. APONTA ENDERECOS DO PARM
+         N     R1,=XL4'7FFFFFFF'  :R1-> PARM EXISTE?
+         BZ    E1_PARM            :...NAO. ERRO DE PARAMETRO
+         LH    R4,0(,R1)          :R4<- SALVA O TAMANHO DO PARM
+         LTR   R4,R4              :R4-> TAMANHO DO PARM ESTA ZERADO?
+         BZ    E1_PARM            :...SIM. ERRO DE PARAMETRO
+         CH    R4,=H'44'          :R4-> TAMANHO DO PARM ESTOUROU?
+         BH    E1_PARM            :...SIM. ERRO DE PARAMETRO
+         LA    R3,2(,R1)          :R3<- ENDERECO DO DADOS DO PARM
+         LA    R2,DSNAME          :R2<- ENDERECO DO DSNAME
+         BCTR  R4,0               :R4<- DESCONTA 1 DO TAMANHO.
+         EX    R4,MOVE#TO         :R4-> EXECUTA MOVE PARM P/ VARIAVEL.
+*
+P1_OPEN  EQU   *
+         OPEN  (SYSPRINT,OUTPUT)  :ABRE O ARQUIVO
+         TM    SYSPRINT+48,X'10'  :ARQUIVO ABRIU COM SUCESSO?
+         BNO   P2_PROC            :...NAO. CONTINUA.
+*---
+*   PRINT - CAPTURA DA DATE/TIME DO SISTEMA
+*---
+         TIME  DEC,SYS#STOK,DATETYPE=DDMMYYYY,LINKAGE=SYSTEM
+         UNPK  SYS#DATE(9),SYS#STOK+8(5)    :DESCOMPACTA A DATA
+         UNPK  SYS#TIME,SYS#STOK(5)         :DESCOMPACTA A HORA
+         OI    SYS#TIME+(L'SYS#TIME-1),X'F0'
+         MVC   OUT#DATE(2),SYS#DATE
+         MVC   OUT#DATE+3(2),SYS#DATE+2
+         MVC   OUT#DATE+6(4),SYS#DATE+4
+         MVC   OUT#TIME(2),SYS#TIME
+         MVC   OUT#TIME+3(2),SYS#TIME+2
+         MVC   OUT#TIME+6(2),SYS#TIME+4
+*---
+*   PRINT - IMPRIME O CABECALHO
+*---
+         PUT   SYSPRINT,OUT#CAB1  :IMPRIME
+         PUT   SYSPRINT,OUT#CAB2  :   AS LINHAS
+         PUT   SYSPRINT,OUT#CAB3  :     DO CABECALHO
+         PUT   SYSPRINT,OUT#CAB4  :
+*---------------------------------------------------------------------*
+* PROC: PROCESSAMENTO -> STRING                                       *
+*---------------------------------------------------------------------*
+P2_PROC  DS   0H
+         LOCATE DSNINFO
+         LTR   R15,R15            :R15-> RETURN CODE E ZEROS?
+         BNZ   E2_LOCT            :...NAO. DATASET NAO ENCONTRADO.
+*
+P2_VOLS  EQU   *
+         LH    R4,VOL#NVOL        :R4<-SALVA NRO. DE VOLUMES
+         LA    R5,VOL#INFO        :R5<-ENDERECA A AREA DOS VOLUMES
+         MVC   OUT#DSET,DSNAME    :MOVE DATASET P/ SYSPRINT
+*
+P2_VOLL  EQU   *
+         MVC   OUT#DMSG,=CL30'Encontra no VOLUME XXXXXX' 
+         MVC   OUT#DMSG+19(6),4(R5)
+         PUT   SYSPRINT,OUT#DET   :GRAVA REGISTRO NO ARQUIVO
+         MVI   OUT#DET,X'40'      :LIMPA O NOME DO OUTPUT
+         MVC   OUT#DET+1(L'OUT#DET-1),OUT#DET
+*
+         LA    R5,12(,R5)         :R5<- PROXIMO BLOCO DEVICE
+         BCT   R4,P2_VOLL         :R4<- CONTROLE DE LACO
+         B     P9_END             :TERMINO DO PROGRAMA
+*
+         TITLE 'SYS001 - DEFINICAO  DOS  ERROS'
+*---------------------------------------------------------------------*
+* ERRO: PARM NAO INFORMADO OU INVALIDO.                               *
+*---------------------------------------------------------------------*
+E1_PARM  DS   0H
+         MVC   RETNCODE,=F'12'    :RETURN CODE = 12
+*
+         WTO   '*** ERRO - PARAMETRO NAO INFORMADA OU INVALIDO'
+         B     P9_EOJ             :TERMINO DO PROGRAMA
+*
+*---------------------------------------------------------------------*
+* ERRO: PARM NAO INFORMADO OU INVALIDO.                               *
+*---------------------------------------------------------------------*
+E2_LOCT  DS   0H
+         MVC   RETNCODE,=F'1'     :RETURN CODE = 01
+*
+         TM    SYSPRINT+48,X'10'  :SYSPRINT ESTA ABERTA?
+         BNO   P9_EOJ             :...NAO. TERMINO DO PROGRAMA
+         MVC   OUT#DSET,DSNAME    :MOVE DATASET P/ SYSPRINT
+         MVC   OUT#DMSG,=CL30'Nao localizado no Catalogo'
+         PUT   SYSPRINT,OUT#DET   :GRAVA REGISTRO NO ARQUIVO
+         B     P9_EOJ             :TERMINO DO PROGRAMA
+*
+         TITLE 'SYS001 - ROTINAS FINAIS DO PROGRAMA'
+*---------------------------------------------------------------------*
+* PROC: FINALIZACAO -> TERMINO COM SUCESSO                            *
+*---------------------------------------------------------------------*
+P9_END   DS   0H
+         XC    RETNCODE,RETNCODE  :RETURN CODE = 0
+         TM    SYSPRINT+48,X'10'  :ARQUIVO ESTA ABERTO?  
+         BNO   P9_EOJ             :...NAO. CONTINUA.     
+         CLOSE (SYSPRINT)                                
+*
+*---------------------------------------------------------------------*
+* PROC: FINALIZACAO -> RESTAURA COMPONENTES E TERMINA PROGRAMA        *
+*---------------------------------------------------------------------*
+P9_EOJ   DS   0H
+         L    R15,RETNCODE        :R15<- RETURN CODE
+         EXIT
+*
+         TITLE 'SYS001 - DEFINICAO  DAS  CONSTANTES  E  VARIAVEIS'
+*---------------------------------------------------------------------*
+* AREA: DEFINICAO DAS VARIAVEIS GLOBAIS DO PROGRAMA.                  *
+*---------------------------------------------------------------------*
+         CNOP  0,4
+MOVE#TO  MVC  0(0,R2),0(R3)       :MOVE PARM PARA VARIAVEL INTERNA
+         LTORG ,
+*
+         DS   0F
+SAVEAREA DS  18F                  :AREA DA LINKAGE SECTION
+SAVEREGS DS  16F                  :AREA DOS REGISTRADORES
+RETNCODE DS    F                  :COD. DE RETORNO
+*
+SYS#STOK DS    CL16               :DATE/TIME DO SISTEMA
+SYS#DATE DC    CL08' '            :DATA DO SISTEMA(DDMMAAAA)
+SYS#TIME DC    CL09' '            :TEMPO DO SISTEMA(HHMMSSDDD)
+*
+OUT#CAB1 DS    0CL81
+         DC     CL01'1'           :Caracter ASA: Salta proxima pagina
+         DC     CL56'SYS001 - Informação de Data sets'
+         DC     CL05'Data:'
+OUT#DATE DC     CL10'DD/MM/AAAA'  :Data do sistema
+         DC     CL09' '
+*
+OUT#CAB2 DS    0CL81
+         DC     CL01' '           :Caracter ASA: Salta 1 linha
+         DC     CL04'Job:'
+OUT#JOBN DC     CL08' '           :Nome deste JobName
+         DC     CL44' '
+         DC     CL05'Hora:'
+OUT#TIME DC     CL08'HH:MM:SS'    :Horario do sistema
+         DC     CL11' '
+*
+OUT#CAB3 DS    0CL81
+         DC     CL01'0'           :Caracter ASA: Salta 2 linhas
+         DC     CL17'Nome do Data sets'
+         DC     CL28' '
+         DC     CL11'Ocorrencias'
+         DC     CL24' '
+*
+OUT#CAB4 DS    0CL81
+         DC     CL01' '           :Caracter ASA: Salta 1 linha
+         DC   72C'-'
+*
+OUT#DET  DS    0CL81
+         DC     CL01' '           :Caracter ASA: Salta 1 linha
+OUT#DSET DC     CL44' '           :Nome do dataset
+         DC     CL01' '
+OUT#DMSG DC     CL30' '           :Mensagem de ocorrencia
+         DC     CL05' '
+*
+SYSPRINT DCB   DDNAME=SYSPRINT,                                        +
+               MACRF=PM,DSORG=PS,RECFM=FA,LRECL=080
+*
+DSNINFO  CAMLST NAME,DSNAME,,VOL#AREA
+DSNAME   DC    CL44' '            :NOME DO DATASET
+VOL#AREA DS    0D
+VOL#NVOL DS     H'00'             :NRO. DE VOLUMES
+VOL#INFO DS  263X'00'             :DETALHES DOS VOLUMES
+*                       Nro de 12 bytes que ocorrem ate 21 vezes
+*                       para multi-volumes datasets
+*            DEVCODE XL4
+*            VOLSER  CL6
+*            FILE    XL2
+*
+         END    ,
+/*
+//*
+//LKED.SYSLMOD  DD  DISP=SHR,DSN=ABC.LOADLIB
+//LKED.SYSIN DD *
+  NAME SYS001(R)
+//

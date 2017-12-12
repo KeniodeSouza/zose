@@ -1,0 +1,13 @@
+//execS004  JOB   'EXECUTA PROGRAMA SYS004',
+//           COND=((12,EQ),(16,EQ),(888,EQ)),
+//           CLASS=A,MSGCLASS=R,MSGLEVEL=(1,1)
+//*
+//*-------------------------------------------------------------------*
+//EXECUTAR  EXEC PGM=SYS004,
+//*         PARM=12
+//*         PARM='CONDICAO DE TESTE'
+//          PARM='1014=CONDICAO DE ALTERNANCIA'
+//*
+//SYSOUT     DD  SYSOUT=*
+//SYSPRINT   DD  SYSOUT=*
+//

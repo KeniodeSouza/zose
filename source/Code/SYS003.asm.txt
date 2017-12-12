@@ -1,0 +1,556 @@
+//COMPS003  JOB  'CRIA O PROGRAMA SYS003',
+//           CLASS=A,MSGCLASS=R,MSGLEVEL=(1,1)
+//*
+//ASMHCL    PROC  RGN=4M,
+//            MEMBER=SYS003,
+//* ASSEMBLER PARM:
+//            ASMPRM='',
+//            MACLIB='SYS1.MACLIB',
+//            SRCLIB='SYS1.SAMPLIB',
+//* LINKEDIT PARM:
+//            LNKPRM=',MAP,PRINT,DCBS',
+//            LNKLIB='SYS1.LINKLIB',
+//            LODLIB='&&LOADLIB'
+//*
+//*********************************************************************
+//***                                                               ***
+//*      ESTA PROCEDURE CONTEM 2 STEPS:                               *
+//*        1. COMPILACAO ASSEMBLER DO PROGRAMA                        *
+//*        2. LINK-EDICAO DO PROGRAMA                                 *
+//***                                                               ***
+//*********************************************************************
+//*
+//*-------------------------------------------------------------------*
+//*           COMPILACAO DO PROGRAMA                                  *
+//*-------------------------------------------------------------------*
+//ASM       EXEC  PGM=ASMA90,REGION=&RGN,
+//          PARM='OBJECT,NODECK,TERM,XREF(SHORT)&ASMPRM'
+//SYSPRINT   DD   SYSOUT=*
+//SYSTERM    DD   DUMMY
+//SYSPUNCH   DD   SYSOUT=*
+//*
+//SYSLIB     DD   DISP=SHR,DSN=SYS1.MACLIB
+//           DD   DISP=SHR,DSN=&MACLIB
+//SYSUT1     DD   UNIT=VIO,SPACE=(1700,(500,50))
+//SYSLIN     DD   DSN=&&LOADSET,UNIT=SYSDA,DISP=(,PASS),
+//            BLKSIZE=27920,LRECL=80,RECFM=FB,DSORG=PS,BUFNO=30,
+//            SPACE=(TRK,(500,50))
+//SYSIN      DD   DISP=SHR,DSN=&SRCLIB(&MEMBER)
+//*
+//*-------------------------------------------------------------------*
+//*           LINK-EDICAO DO PROGRAMA                                 *
+//*-------------------------------------------------------------------*
+//LKED      EXEC  PGM=IEWL,COND=(05,LT,ASM),
+//          PARM='LET,LIST,CALL,XREF&LNKPRM'
+//SYSPRINT   DD   SYSOUT=*
+//*
+//SYSLIB     DD   DISP=SHR,DSN=SYS1.LINKLIB
+//           DD   DISP=SHR,DSN=&LNKLIB
+//*
+//SYSLIN     DD   DSN=&&LOADSET,DISP=(OLD,DELETE),BUFNO=30
+//           DD   DDNAME=SYSIN
+//SYSUT1     DD   UNIT=SYSDA,SPACE=(TRK,(400,40))
+//*
+//SYSLMOD    DD   DISP=SHR,DSN=&LODLIB(&MEMBER)
+//*********************************************************************
+//****************   E N D   O F   P R O C E D U R E   ****************
+//*********************************************************************
+//   PEND
+//*
+//EXECUTE   EXEC ASMHCL
+//ASM.SYSIN     DD  *
+         PRINT ON,NOGEN
+*
+         TITLE 'SYS003 - DESCRICAO SUMARIO DO PROGRAMA.'
+***********************************************************************
+*                                                                     *
+*            SSSSS  Y     Y  SSSSS   00000   00000   33333            *
+*           S     S Y     Y S     S 00    0 00    0 3     3           *
+*           S        Y   Y  S       0 0   0 0 0   0       3           *
+*            SSSSS    YYY    SSSSS  0  0  0 0  0  0    333            *
+*                 S    Y          S 0   0 0 0   0 0       3           *
+*           S     S    Y    S     S 0    00 0    00 3     3           *
+*            SSSSS     Y     SSSSS   00000   00000   33333            *
+*                                                                     *
+*---------------------------------------------------------------------*
+*                                                                     *
+*  Finalidade: Substituir parametros simbolicos de um arquivo ou      *
+*              membro de particionado (imagem de cartao).             *
+*  Autor.....: Kenio de Souza                                         *
+*  Local/data: Brasilia, Agosto/2014                                  *
+*  Versao....: 1.0                                                    *
+*                                                                     *
+*---------------------------------------------------------------------*
+*  NOTA:                                                              *
+*   - Registradores geral:                                            *
+*     -Input : R1  - Endereco do parm;                                *
+*              R13 - Endereco da savearea;                            *
+*              R14 - Endereco de retorno;                             *
+*              R15 - Endereco base inicial.                           *
+*     -Output: R15 - Return code: 8 - Parm nao informado              *
+*                                12 - Parm nao informado              *
+*                                                                     *
+*   - Informacoes de uso:                                             *
+*     - Os simbolicos a serem substituidos podem ser  informados      *
+*       atraves do parm jcl ou via dd sysin, permitindo uma maior     *
+*       quantidade, dependente do tamanho e do valor de  cada         *
+*       simbolico.                                                    *
+*                                                                     *
+*     - Forma de utilizacao - JCL                                     *
+*           //..  JOB ..                                              *
+*           //SYS003   EXEC PGM=SYS003,                               *
+*           //         PARM='formato'                                 *
+*           //SYSPRINT DD   SYSOUT=*                                  *
+*           //SYSIN    DD   DATA                                      *
+*           //SYSUT1   DD   DSN=...                                   *
+*           //SYSUT2   DD   DSN=...                                   *
+*                                                                     *
+*     - Utilizando PARM                                               *
+*      - Formato basico                                               *
+*        As opcoes devem estar separadas por virgula, antes dos       *
+*        simbolicos a serem substituidos.                             *
+*                                                                     *
+*      Exemplo:                                                       *
+*        //SYS003  EXEC  PGM=SYS003,                                  *
+*        //        PARM='a1=V1,a2=V2,a3=V3,...'                       *
+*        //SYSOUT  DD    SYSOUT=*                                     *
+*        //SYSUT1  DD    DSN=&CARDLIB(&SSSXNNNA),DISP=SHR             *
+*        //SYSUT2  DD    DSN=&&SSSXNNNA,UNIT=VIO,                     *
+*        //        DISP=(,PASS),LRECL=80,RECFM=FB,                    *
+*        //        SPACE=(TRK(1))                                     *
+*                                                                     *
+*       - Formato utilizando SYSIN                                    *
+*         - O PARM deve ser informado com o conteudo 'SYSIN'.         *
+*         - Comentario deve ter um '*' na primeira posicao do         *
+*           registro do arquivo SYSIN.                                *
+*                                                                     *
+*      Exemplo:                                                       *
+*        //SYS003   EXEC  PGM=SYS003,                                 *
+*        //         PARM='SYSIN'                                      *
+*        //SYSPRINT DD    SYSOUT=*                                    *
+*        //SYSUT1   DD    DSN=&CARDLIB(&SSSXNNNC),DISP=SHR            *
+*        //SYSUT2   DD    DSN=&&SSSXNNNA,UNIT=VIO,                    *
+*        //         DISP=(,PASS),LRECL=80,RECFM=FB,                   *
+*        //         SPACE=(TRK(1))                                    *
+*        //SYSIN    DD    *                                           *
+*        * Este registro e' um comentario                             *
+*        A1=V1                                                        *
+*        A2=V2                                                        *
+*        A3=V3                                                        *
+*        /*                                                           *
+*                                                                     *
+*     - Utilizando DD                                                 *
+*       SYSUT1 - Arquivo sequencial ou membro de particionado,        *
+*                imagem de cartao, contendo dados diversos e          *
+*                e simbolicos que serao substituidos.                 *
+*                Formato: LRECL=080, RECFM=FB, DSORG=PS               *
+*       SYSUT2 - Arquivo sequencial, membro de particionado ou        *
+*                temporario imagem de cartao, que recebera' o         *
+*                conteudo do SYSUT1 com as alteracoes referentes aos  *
+*                simbolicos substituidos.                             *
+*                Formato: LRECL=080, RECFM=FB, DSORG=PS               *
+*       SYSIN  - Arquivo de entrada, opcional sequencial, membro de   *
+*                particionado, ou in stream, imagem  de  cartao,      *
+*                contendo opcoes de controle de  procesmento e        *
+*                simbolicos que substituirao seus correspondentes no  *
+*                SYSUT1, podendo tambem conter comentarios.           *
+*                Formato: LRECL=080, RECFM=FB, DSORG=PS               *
+*                                                                     *
+***********************************************************************
+         COPY ASM@MACR
+*
+         TITLE 'SYS003 - ROTINAS INICIAIS DO PROGRAMA'
+*---------------------------------------------------------------------*
+* PROC: ROTINA DE INICIALIZACAO COM LINKAGE SECTION INICIAL           *
+*---------------------------------------------------------------------*
+SIS003   ENTER SAVEAREA
+*
+*---------------------------------------------------------------------*
+* PROC: INICIALIZACAO -> RECEPCAO DE PARAMETROS                       *
+*---------------------------------------------------------------------*
+P1_INIT  DS   0H
+         LTR   R1,R1              :R1-> EXISTE PARAMETRO?
+         BZ    E1_PARM            :...NAO. ERRO DE PARM
+         L     R1,0(,R1)          :R1<-R1. APONTA ENDERECOS DO PARM
+         N     R1,=XL4'7FFFFFFF'  :R1-> PARM EXISTE?
+         BZ    E1_PARM            :...NAO. ERRO DE PARM
+         LH    R5,0(,R1)          :R4<- SALVA O TAMANHO DO PARM
+         CH    R5,=H'120'         :R4-> TAMANHO DO PARM E' 120?
+         BH    E1_PARM            :...SIM. ERRO DE PARAMETRO
+         LA    R6,2(,R1)          :R6<-ENDERECO DO PARM
+*
+         L     R2,=A(MAX#TAM)     :R2 <- VALOR MAXIMO DE REGISTRO
+         GETMAIN R,LV=(2)         :BUSCA MEMORIA EXTRA
+         LTR   R15,R15            :MEMORIA EXTRA CONSEGUIDA?
+         BNZ   E2_GETM            : NAO. ERRO DE BUSCA DE MEMORIA
+         LR    R11,R1             :SAVE TABLE ADDRESS
+         USING PRM#AREA,R11
+*---------------------------------------------------------------------*
+* PROC: PROCESSAMENTO -> STRING                                       *
+*---------------------------------------------------------------------*
+P2_PROC  DS   0H
+         CLC   =C'SYSIN',0(R6)  :PARM EH SYSIN?
+         BNE   P3_PARM            :...NAO. PROCESSA PARM
+         B     P4_SYSIN           :...SIM. PROCESSA SYSIN.
+*
+****---------------------------------------------------------------****
+*   PROCESSAMENTO DO PARM                                             *
+****---------------------------------------------------------------****
+P3_PARM  DS   0H
+         USING ARG#AREA,R10
+*
+         LA    R3,1               :R3<-INICIALIZA NRO. OCORRENCIAS.
+         XR    R4,R4              :R4<-ZERA O TAMANHO DO ITEM
+         LA    R2,WRK#IDEN        :R2<-ENDERECO DO IDENTIFICADOR
+         LA    R10,PRM#DATA       :R10<-ENDERECO DA AREA AUXILIAR
+         XC    FLG#WORK,FLG#WORK  :FLAG EM ESTADO DE ARGUMENTO
+*
+P3_LOOP  DS   0H
+         CLI   0(R6),C' '         :R6->CARACTER EH BRANCO?
+         BE    P3_NEXT            :...SIM. PROXIMO ENDERECO.
+         CLI   0(R6),C','         :R6->CARACTER EH ','?
+         BE    P3_SAVE            :...SIM. TERMINO DO ARGUMENTO.
+         CLI   0(R6),C'='         :R6->CARACTER EH '='?
+         BE    P3_SVAL            :...SIM. ENTRA EM ESTADO DE DADO
+*
+         CLC   FLG#WORK,=X'01'    :FLAG EM ESTADO DE DADO?
+         BE    P3_PVAL            :...SIM. PROCESSA DADO
+*
+* Estado de Argumento
+         CL    R4,=F'8'           :TAMANHO DO IDENT. EH MAIOR QUE 8?
+         BH    E1_PARM            :...SIM. ERRO DE ARGUMENTO.
+         B     P3_MOVE            :CONTINUA.
+*
+* Estado de dado
+P3_PVAL  EQU   *
+         CL    R4,=F'30'          :TAMANHO DO VALOR EH MAIOR QUE 30?
+         BH    E1_PARM            :...SIM. ERRO DE ARGUMENTO
+*
+P3_MOVE  EQU   *
+         MVC   0(1,R2),0(R6)      :MOVE ORIGEM P/ DESTINO
+         LA    R2,1(,R2)          :R2<-PROXIMO ENDERECO DO DESTINO
+         LA    R4,1(,R4)          :R4<-SOME 1 AO TAMANHO
+         B     P3_NEXT            :CONTINUA.
+*
+P3_SVAL  EQU   *
+         MVC   FLG#WORK,=X'01'    :FLAG DE VALOR
+         LA    R2,WRK#VALR        :R8<-APONTA PARA VALOR
+         XR    R4,R4              :R4<-ZERA TAMANHO
+         B     P3_NEXT            :CONTINUA.
+*
+P3_SAVE  EQU   *
+         MVC   FLG#WORK,=X'00'    :FLAG DE IDENTIFICADOR
+         ST    R4,ARG#LENG        :SALVA O TAMANHO DO VALOR
+         MVC   ARG#IDEN,WRK#IDEN  :SALVA O IDENTIFICADOR
+         MVC   ARG#VALR,WRK#VALR  :SALVA O VALOR
+*
+         MVI   WRK#DATA,X'40'     :INICIALIZA O CAMPO
+         MVC   WRK#DATA+1(37),WRK#DATA
+         LA    R2,WRK#IDEN        :R2<-ENDERECA O IDENTIFICADOR
+         XR    R4,R4              :R4<-ZERA O TAMANHO
+         LA    R3,1(,R3)          :R3<-SOME 1 AO NRO. DE ITENS
+         LA    R10,42(,R10)       :R10<-PROXIMO BLOCO DE MEM. VALIDO.
+*
+P3_NEXT  EQU   *
+         LA    R6,1(,R6)          :R6<- PROXIMO ENDERECO DO PARM
+         BCT   R5,P3_LOOP         :R5<- CONTROLE DE LACO
+*
+         STH   R3,PRM#NUMR        :SALVA O NRO. DE ITENS
+         ST    R4,ARG#LENG        :SALVA O TAMANHO DO VALOR
+         MVC   ARG#IDEN,WRK#IDEN  :SALVA O IDENTIFICADOR
+         MVC   ARG#VALR,WRK#VALR  :SALVA O VALOR
+         B     P5_CHNGE
+         DROP  R10
+*
+****---------------------------------------------------------------****
+*   PROCESSAMENTO DO SYSIN                                            *
+****---------------------------------------------------------------****
+P4_SYSIN DS   0H
+         USING ARG#AREA,R10
+*
+         OPEN  (SYSIN,INPUT)      :ABRE O ARQUIVO
+         TM    SYSIN+48,X'10'     :ARQUIVO ABRIU COM SUCESSO?
+         BNO   E5_SIN             :...NAO. ROTINA DE ERRO.
+*
+         LA    R3,1               :R3<-ZERA NRO. OCORRENCIA DE PARM
+         LA    R10,PRM#DATA        :R7<-ENDERECO DA AREA AUXILIAR
+*
+P4_READ  EQU   *
+         GET   SYSIN              :BUSCA UM REGISTRO EM SYSIN
+         CLC   =CL80' ',0(R1)     :COMPARA COM BRANCOS
+         BE    P4_READ            :...SIM. BUSCA OUTRO REGISTRO
+         CLI   0(R1),C'*'         :COMPARA COM ASTERISCOS?
+         BE    P4_READ            :...SIM. BUSCA OUTRO REGISTRO
+*
+P4_PROC  EQU   *
+         XR    R4,R4              :R4<- ZERA O TAMANHO DO ITEM
+         LA    R5,77              :R5<-TAMANHO DO REGISTRO
+         LR    R6,R1              :R6<-R1. ENDERECO DO REGISTRO
+         LA    R2,WRK#IDEN        :R2<-ENDERECO DO IDENTIFICADOR
+         XC    FLG#WORK,FLG#WORK  :EM ESTADO DE ARGUMENTO
+*
+P4_LOOP  DS   0H
+         CLC   FLG#WORK,=X'01'    :FLAG EM ESTADO DE DADO?
+         BE    P4_PVAL            :...SIM. PROCESSA DADO
+*
+* Estado de argumento
+         CLI   0(R6),C' '         :R6->CARACTER EH ' '?
+         BE    P4_NEXT            :...SIM. PROXIMO ENDERECO.
+         CLI   0(R6),C'='         :R6->CARACTER EH '='?
+         BE    P4_SVAL            :...SIM. MUDOU P/ VALOR.
+         CL    R4,=F'8'           :TAMANHO DO IDENT. EH MAIOR QUE 8?
+         BH    E6_ARGM            :...SIM. ERRO DE ARGUMENTO.
+         B     P4_MOVE            :CONTINUA.
+*
+* Estado de Valor
+P4_PVAL  EQU   *
+         CLI   0(R6),C' '         :R6->CARACTER EH ' '?
+         BE    P4_SAVE            :...SIM. FIM DE PROCESSO
+         CL    R4,=F'30'          :TAMANHO DO VALOR EH MAIOR QUE 30?
+         BH    E6_ARGM            :...SIM. ERRO DE ARGUMENTO
+*
+P4_MOVE  EQU   *
+         MVC   0(1,R2),0(R6)      :MOVE ORIGEM P/ DESTINO
+         LA    R2,1(,R2)          :R2<-PROXIMO ENDERECO DO DESTINO
+         LA    R4,1(,R4)          :R4<-SOME 1 AO TAMANHO
+         B     P4_NEXT            :CONTINUA.
+*
+P4_SVAL  EQU   *
+         MVC   FLG#WORK,=X'01'    :MUDA FLAG PARA ESTADO DE DADO
+         LA    R2,WRK#VALR        :R2<-ENDERECO DE VALOR
+         XR    R4,R4              :R4<-ZERA TAMANHO
+*
+P4_NEXT  EQU   *
+         LA    R6,1(,R6)          :R6<- PROXIMO ENDERECO DO REGISTRO
+         BCT   R5,P4_LOOP         :R5<- CONTROLE DE LACO
+*
+P4_SAVE  EQU   *
+         STH   R3,PRM#NUMR        :SALVA O NRO. DE ITENS
+         ST    R4,ARG#LENG        :SALVA O TAMANHO DO VALOR
+         MVC   ARG#IDEN,WRK#IDEN  :SALVA O IDENTIFICADOR
+         MVC   ARG#VALR,WRK#VALR  :SALVA O VALOR
+         MVI   WRK#DATA,X'40'     :INICIALIZA O CAMPO
+         MVC   WRK#DATA+1(37),WRK#DATA
+*
+         LA    R3,1(,R3)          :R3<-SOME 1 AO NRO. DE ITENS
+         LA    R10,42(,R10)       :R10<-PROXIMO BLOCO DE MEM. VALIDO.
+         B     P4_READ
+*
+P4_CLOSE DS   0H
+         CLOSE (SYSIN)            :FECHA O ARQUIVO
+         B     P5_CHNGE
+         DROP  R10
+*
+****---------------------------------------------------------------****
+*   PROCESSAMENTO DOs DADOS P/ SUBSTITUICAO                           *
+****---------------------------------------------------------------****
+P5_CHNGE DS   0H
+         USING ARG#AREA,R10
+*
+         OPEN  (SYSUT1,INPUT)     :ABRE O ARQUIVO
+         TM    SYSUT1+48,X'10'    :ARQUIVO ABRIU COM SUCESSO?
+         BNO   E3_FILE1           :...NAO. ROTINA DE ERRO.
+*
+         OPEN  (SYSUT2,OUTPUT)    :ABRE O ARQUIVO
+         TM    SYSUT2+48,X'10'    :ARQUIVO ABRIU COM SUCESSO?
+         BNO   E4_FILE2           :...NAO. ROTINA DE ERRO.
+*
+P5_READ  EQU   *
+         GET   SYSUT1             :BUSCA O REGISTRO EM SYSUT1
+         LA    R5,77              :R5<-TAMANHO DO REGISTRO
+         LR    R6,R1              :R6<-R1. ENDERECO DA AREA DE ENTRADA
+         LA    R2,OUT#DATA        :R2<-ENDERECO DA AREA DE SAIDA
+         XC    FLG#WORK,FLG#WORK  :EM ESTADO DE DADOS
+*
+P5_LOOP1 EQU   *
+         CLC   FLG#WORK,=X'01'    :ESTA EM ESTADO DE ARGUMENTO?
+         BE    P5_PARG            :...SIM. VA PARA ARGUMENTOS.
+*
+* Estado de Dado
+         CLI   0(R6),X'50'        :CARACTER EH '&'?
+         BNE   P5_MOVED           :...NAO. MOVE P/ DADO
+*
+         MVC   FLG#WORK,=X'01'    :FLAG EM ESTADO DE ARGUMENTO
+         LA    R7,WRK#IDEN        :R7<-ENDERECO DO IDENTIFICADOR
+         MVC   WRK#IDEN,=CL8' '   :INICIALIZA VARIAVEL
+         B     P5_NEXT1           :CONTINUA
+*
+* Estado de Argumento
+P5_PARG  EQU   *
+         CLI   0(R6),X'40'        :E' UM CARACTER ' '?
+         BE    P5_NEXT1           :...SIM. CONTINUA.
+         CLI   0(R6),X'80'        :E' UM CARACTER ESPECIAL?
+         BH    P5_MOVEA           :...NAO. MOVE P/ ARGUMENTO
+*
+* Pesquisa p/ identificar a variavel e o seu valor
+P5_PESQ  EQU   *
+         LH    R3,PRM#NUMR        :R3<-NUMERO DE ARGUMENTOS
+         LA    R10,PRM#DATA       :R10<-ENDERECO DA AREA AUXILIAR
+*
+P5_LOOP2 EQU   *
+         CLC   WRK#IDEN,ARG#IDEN  :ITEM ESTA NA LISTA?
+         BNE   P5_NEXT2           :...NAO. PROXIMO ITEM
+         MVC   WRK#VALR,12(R10)   :RECUPERA O VALOR
+         LA    R8,WRK#VALR        :R8<-ENDERECO DO VALOR
+         L     R4,ARG#LENG        :R4<-RESTAURA O TAMANHO DO DADO
+         BCTR  R4,0
+         EX    R4,MOVE#TO         :R4->MOVE DADOS P/ SAIDA
+         LA    R2,1(R4,R2)        :R2<-PROXIMO ENDERECO DA SYSUT2
+         B     P5_OUTRO           :ITEM ENCONTRADO. VA P/ PROXIMO
+P5_NEXT2 EQU   *
+         LA    R10,42(,R10)       :R10<-PROXIMO ITEM DA LISTA AUXILIAR
+         BCT   R3,P5_LOOP2        :R3<- CONTROLE DE LACO DE ARGUMENTO
+*
+* Verifica os caracteres particulares ('&' e '.')
+P5_OUTRO EQU   *
+         CLI   0(R6),X'50'        :E' UM CARACTER '&'?
+         BNE   P5_FINAL           :...NAO. CHECA SE TERMINOU.
+*
+         LA    R7,WRK#IDEN        :R7<-ENDERECO DO IDENTIFICADOR
+         MVC   WRK#IDEN,=CL8' '   :INICIALIZA VARIAVEL
+         B     P5_NEXT1           :CONTINUA
+*
+P5_FINAL EQU   *
+         XC    FLG#WORK,FLG#WORK  :FLAG EM ESTADO DE DADOS
+         CLI   0(R6),C'.'         :E' UM CARACTER '.'?
+         BE    P5_NEXT1           :...SIM. FIM DE ARGUMENTO.
+*
+P5_MOVED EQU   *
+         MVC   0(1,R2),0(R6)      :MOVE PARA SYSUT2
+         LA    R2,1(,R2)          :R2<-PROXIMO ENDERECO DE SYSUT2
+         B     P5_NEXT1           :CONTINUA
+*
+P5_MOVEA EQU   *
+         MVC   0(1,R7),0(R6)      :MOVE PARA VARIAVEL DE TRABALHO
+         LA    R7,1(,R7)          :R7<-PROXIMO ENDERECO DE VARIAVEL
+*
+P5_NEXT1 EQU   *
+         LA    R6,1(,R6)          :R1<-PROXIMO ENDERECO DO SYSUT1
+         BCT   R5,P5_LOOP1        :R5<-CONTROLE DE LACO DE REGISTRO
+*
+P5_WRITE DS   0H
+         PUT   SYSUT2,OUT#DATA    :SALVA O REGISTRO EM SYSUT2
+         MVI   OUT#DATA,X'40'     :INICIALIZA O SYSUT2
+         MVC   OUT#DATA+1(79),OUT#DATA
+         B     P5_READ
+*
+P5_CLOSE DS   0H
+         CLOSE (SYSUT1)           :FECHA O ARQUIVO
+         CLOSE (SYSUT2)           :FECHA O ARQUIVO
+         B     P9_END             :FIM NORMAL
+         DROP  R10
+*
+MOVE#TO  MVC  0(0,R2),0(R8)       :MOVE ORIGEM P/ DESTINO
+*
+         TITLE 'SYS003 - DEFINICAO  DOS  ERROS'
+*---------------------------------------------------------------------*
+* ERRO: PARM NAO INFORMADO OU INVALIDO.                               *
+*---------------------------------------------------------------------*
+E1_PARM  DS   0H
+         WTO   '*** ERRO - PARAMETRO NAO INFORMADA OU INVALIDO'
+         MVC   RETNCODE,=F'12'     :RETURN CODE = 12
+         B     P9_EOJ             :TERMINO DO PROGRAMA
+*---------------------------------------------------------------------*
+* ERRO: FALTA MEMORIA PARA PROCESSAMENTO                              *
+*---------------------------------------------------------------------*
+E2_GETM  DS   0H
+         WTO   '*** ERRO - FALTA MEMORIA PARA O PROCESSAMENTO'
+         MVC   RETNCODE,=F'16'    :RETURN CODE = 16
+         B     P9_EOJ             :TERMINO DO PROGRAMA
+*---------------------------------------------------------------------*
+* ERRO: ABERTURA DO ARQUIVO DE ENTRADA                                *
+*---------------------------------------------------------------------*
+E3_FILE1 DS   0H
+         WTO   '*** ERRO - <SYSUT1> NAO POSSIVEL ABRIR O ARQUIVO'
+         MVC   RETNCODE,=F'08'    :RETURN CODE = 8
+         B     P9_EOJ             :TERMINO DO PROGRAMA
+*---------------------------------------------------------------------*
+* ERRO: ABERTURA DO ARQUIVO DE ENTRADA                                *
+*---------------------------------------------------------------------*
+E4_FILE2 DS   0H
+         WTO   '*** ERRO - <SYSUT2> NAO POSSIVEL ABRIR O ARQUIVO'
+         MVC   RETNCODE,=F'08'    :RETURN CODE = 8
+         B     P9_EOJ             :TERMINO DO PROGRAMA
+*---------------------------------------------------------------------*
+* ERRO: ABERTURA DO ARQUIVO DE ENTRADA                                *
+*---------------------------------------------------------------------*
+E5_SIN   DS   0H
+         WTO   '*** ERRO - <SYSIN> NAO POSSIVEL ABRIR O ARQUIVO'
+         MVC   RETNCODE,=F'12'    :RETURN CODE = 12
+         B     P9_EOJ             :TERMINO DO PROGRAMA
+*---------------------------------------------------------------------*
+* ERRO: ABERTURA DO ARQUIVO DE ENTRADA                                *
+*---------------------------------------------------------------------*
+E6_ARGM  DS   0H
+         WTO   '*** ERRO - DADOS DO ARQUIVO ESTA INVALIDA'
+         MVC   RETNCODE,=F'12'    :RETURN CODE = 12
+         B     P9_EOJ             :TERMINO DO PROGRAMA
+*
+         TITLE 'SYS003 - ROTINAS FINAIS DO PROGRAMA'
+****---------------------------------------------------------------****
+* PROC: FINALIZACAO -> TERMINO COM SUCESSO                            *
+****---------------------------------------------------------------****
+P9_END   DS   0H
+         XC    RETNCODE,RETNCODE  :RETURN CODE = 0
+*
+*---------------------------------------------------------------------*
+* PROC: FINALIZACAO -> RESTAURA COMPONENTES E TERMINA PROGRAMA        *
+*---------------------------------------------------------------------*
+P9_EOJ   DS   0H
+         L     R2,=A(MAX#TAM)     :R2 <- CARREGA VALOR MAXIMO PERMITIDO
+         FREEMAIN R,LV=(2),A=(11) :LIBERA A MEMORIA EXTRA
+*
+         L     R15,RETNCODE       :R15<- RETURN CODE
+         EXIT
+*
+         TITLE 'SYS003 - DEFINICAO  DAS  CONSTANTES  E  VARIAVEIS'
+*---------------------------------------------------------------------*
+* AREA: DEFINICAO DAS VARIAVEIS GLOBAIS DO PROGRAMA.                  *
+*---------------------------------------------------------------------*
+         CNOP  0,4
+MAX#TAM  EQU   4096               :TAMANHO MAXIMO DE MEMORIA EXTRA
+         LTORG ,
+*
+         DS   0F
+SAVEAREA DS  18F                  :AREA DA LINKAGE SECTION
+SAVEREGS DS  16F                  :AREA DOS REGISTRADORES
+RETNCODE DS    F                  :COD. DE RETORNO
+FLG#WORK DC    X'00'              :FLAG DE ESTADO DE USO GENERICO
+WRK#DATA DC   0CL38
+WRK#IDEN DC    CL08' '
+WRK#VALR DC    CL30' '
+*
+OUT#DATA DC    CL80' '
+*
+SYSIN    DCB   DDNAME=SYSIN,                                           +
+               MACRF=GL,DSORG=PS,RECFM=F,LRECL=080,                    +
+               EODAD=P4_CLOSE
+*
+SYSUT1   DCB   DDNAME=SYSUT1,                                          +
+               MACRF=GL,DSORG=PS,RECFM=F,LRECL=080,                    +
+               EODAD=P5_CLOSE
+*
+SYSUT2   DCB   DDNAME=SYSUT2,                                          +
+               MACRF=PM,DSORG=PS,RECFM=F,LRECL=080
+*
+         TITLE 'SYS003 - DEFINICAO  DAS  CONSTANTES  E  VARIAVEIS'
+***----------------------------------------------------------------***
+*  DSECT: DEFINICAO DAS DUMMY SECTIONS                               *
+***----------------------------------------------------------------***
+PRM#AREA DSECT
+PRM#NUMR DS    H
+PRM#DATA DS    C
+*
+ARG#AREA DSECT
+ARG#IDEN DS    CL08
+ARG#LENG DS    F
+ARG#VALR DS    CL30
+ARG#LEN  EQU   *
+*
+         END    ,
+/*
+//*
+//LKED.SYSLMOD  DD  DISP=SHR,DSN=ABC.LOADLIB
+//LKED.SYSIN DD *
+  NAME SYS003(R)
+//

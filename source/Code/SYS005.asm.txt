@@ -1,0 +1,461 @@
+//COMPS005  JOB  'CRIA O PROGRAMA SYS005',
+//           CLASS=A,MSGCLASS=R,MSGLEVEL=(1,1)
+//*
+//ASMHCL    PROC  RGN=4M,
+//            MEMBER=SYS005,
+//* ASSEMBLER PARM:
+//            ASMPRM='',
+//            MACLIB='SYS1.MACLIB',
+//            SRCLIB='SYS1.SAMPLIB',
+//* LINKEDIT PARM:
+//            LNKPRM=',MAP,PRINT,DCBS',
+//            LNKLIB='SYS1.LINKLIB',
+//            LODLIB='&&LOADLIB'
+//*
+//*********************************************************************
+//***                                                               ***
+//*      ESTA PROCEDURE CONTEM 2 STEPS:                               *
+//*        1. COMPILACAO ASSEMBLER DO PROGRAMA                        *
+//*        2. LINK-EDICAO DO PROGRAMA                                 *
+//***                                                               ***
+//*********************************************************************
+//*
+//*-------------------------------------------------------------------*
+//*           COMPILACAO DO PROGRAMA                                  *
+//*-------------------------------------------------------------------*
+//ASM       EXEC  PGM=ASMA90,REGION=&RGN,
+//          PARM='OBJECT,NODECK,TERM,XREF(SHORT)&ASMPRM'
+//SYSPRINT   DD   SYSOUT=*
+//SYSTERM    DD   DUMMY
+//SYSPUNCH   DD   SYSOUT=*
+//*
+//SYSLIB     DD   DISP=SHR,DSN=SYS1.MACLIB
+//           DD   DISP=SHR,DSN=&MACLIB
+//SYSUT1     DD   UNIT=VIO,SPACE=(1700,(500,50))
+//SYSLIN     DD   DSN=&&LOADSET,UNIT=SYSDA,DISP=(,PASS),
+//            BLKSIZE=27920,LRECL=80,RECFM=FB,DSORG=PS,BUFNO=30,
+//            SPACE=(TRK,(500,50))
+//SYSIN      DD   DISP=SHR,DSN=&SRCLIB(&MEMBER)
+//*
+//*-------------------------------------------------------------------*
+//*           LINK-EDICAO DO PROGRAMA                                 *
+//*-------------------------------------------------------------------*
+//LKED      EXEC  PGM=IEWL,COND=(05,LT,ASM),
+//          PARM='LET,LIST,CALL,XREF&LNKPRM'
+//SYSPRINT   DD   SYSOUT=*
+//*
+//SYSLIB     DD   DISP=SHR,DSN=SYS1.LINKLIB
+//           DD   DISP=SHR,DSN=&LNKLIB
+//*
+//SYSLIN     DD   DSN=&&LOADSET,DISP=(OLD,DELETE),BUFNO=30
+//           DD   DDNAME=SYSIN
+//SYSUT1     DD   UNIT=SYSDA,SPACE=(TRK,(400,40))
+//*
+//SYSLMOD    DD   DISP=SHR,DSN=&LODLIB(&MEMBER)
+//*********************************************************************
+//****************   E N D   O F   P R O C E D U R E   ****************
+//*********************************************************************
+//   PEND
+//*
+//EXECUTE   EXEC ASMHCL
+//ASM.SYSIN     DD  *
+         PRINT ON,NOGEN
+*
+         TITLE 'SYS005 - DESCRICAO SUMARIO DO PROGRAMA.'
+***********************************************************************
+*                                                                     *
+*            SSSSS  Y     Y  SSSSS   00000   00000  5555555           *
+*           S     S Y     Y S     S 00    0 00    0 5                 *
+*           S        Y   Y  S       0 0   0 0 0   0 5                 *
+*            SSSSS    YYY    SSSSS  0  0  0 0  0  0 555555            *
+*                 S    Y          S 0   0 0 0   0 0       5           *
+*           S     S    Y    S     S 0    00 0    00       5           *
+*            SSSSS     Y     SSSSS   00000   00000  555555            *
+*                                                                     *
+*---------------------------------------------------------------------*
+*                                                                     *
+*  Finalidade: Emite o código de retorno de acordo com a avaliação    *
+*              das condiçoes do arquivo a verificar.                  *
+*  Autor.....: Kenio de Souza                                         *
+*  Local/data: Brasilia, Setembro/2017                                *
+*  Versao....: 1.0                                                    *
+*                                                                     *
+*---------------------------------------------------------------------*
+*  NOTA:                                                              *
+*   - Registradores geral:                                            *
+*     -INPUT : R1  - ENDERECO DO PARM;                                *
+*              R13 - ENDERECO DA SAVEAREA;                            *
+*              R14 - ENDERECO DE RETORNO;                             *
+*              R15 - ENDERECO BASE INICIAL.                           *
+*     -Output: R15 - Return code: nn - Código do retorno.             *
+*                                 12 - Parm não informado             *
+*                                                                     *
+*   - Macros: ABEND  -                                                *
+*                                                                     *
+*   - Informacoes de uso:                                             *
+*     - Forma de utilizacao - JCL                                     *
+*         //..  JOB ..                                                *
+*         //SYS005   EXEC PGM=SYS005,                                 *
+*         //         PARM='formato'                                   *
+*         //SYSPRINT DD   SYSOUT=*                                    *
+*         //SYSIN    DD DSN=nome do arquivo,DISP=SHR                  *
+*                                                                     *
+*     - Utilizando PARM                                               *
+*       - O teste para conteudo de arquivo, o parametro recebera      *
+*         a condição de teste e a quantidade de registro.             *
+*         Condiçoes igual (=), maior e igual (<=), menor e igual      *
+*         (>=) e diferente (<>).                                      *
+*                                                                     *
+*      - Formatos utilizado para teste de arquivo.                    *
+*        Formato básico:                                              *
+*         PARM=('FILE??nnnnn')                                        *
+*         -Checa a condição do arquivo, se condição não for verdade   *
+*          retorna com RC igual a 88. ?? corresponde as condiçoes     *
+*          que são (=, <, <=, >, >= e <>) para validação do arquivo   *
+*       Exemplo:                                                      *
+*         PARM=('FILE=0')                                             *
+*         - Checa se o arquivo esta vazio. Caso haja registro retorna *
+*           com RC igual a 88.                                        *
+*         PARM=('FILE>120')                                           *
+*         - Checa se o arquivo tem mais de 120 registros. Caso não    *
+*           não tenha, retorna com RC igual a 88.                     *
+*         PARM=('FILE<120')                                           *
+*         - Checa se o arquivo tem menos de 120 registros. Caso tenha *
+*           mais 120 registros, retorna com RC igual a 88.            *
+*                                                                     *
+*      - Formato utilizando arquivo, condicao e codigo de retorno.    *
+*        Formato completo:                                            *
+*         PARM=('FILE??nnnnn,RC=nnn')                                 *
+*         -Checa a condição do arquivo e termina a execução com o     *
+*          return code igual a nnnn do parametro RC.                  *
+*       Exemplo:                                                      *
+*         PARM=('FILE=0,RC=16')                                       *
+*         - Checa se o arquivo esta vazio. Caso haja registro retorna *
+*           com RC igual a 16.                                        *
+*         PARM=('FILE>=120,RC=32')                                    *
+*         - Checa se o arquivo tem 120 registros ou mais. Caso não    *
+*           tenha, retorna com RC igual a 32.                         *
+*         PARM=('FILE<=120,RC=32')                                    *
+*         - Checa se o arquivo tem 120 registros ou menos. Caso não   *
+*           tenha, retorna com RC igual a 32.                         *
+*                                                                     *
+***********************************************************************
+         COPY ASM@MACR
+*
+         TITLE 'SYS005 - ROTINAS INICIAIS DO PROGRAMA'
+*---------------------------------------------------------------------*
+* PROC: ROTINA DE INICIALIZACAO COM LINKAGE SECTION INICIAL           *
+*---------------------------------------------------------------------*
+SIS005   ENTER SAVEAREA
+*
+*---------------------------------------------------------------------*
+* PROC: INICIALIZACAO -> RECEPCAO DE PARAMETROS                       *
+*---------------------------------------------------------------------*
+P1_INIT  DS   0H
+         LTR   R1,R1              :R1-> EXISTE PARAMETRO?
+         BZ    E1_PARM            :...NAO. ERRO DE PARM
+         L     R1,0(,R1)          :R1<-R1. APONTA ENDERECOS DO PARM
+         N     R1,=XL4'7FFFFFFF'  :R1-> PARM EXISTE?
+         BZ    E1_PARM            :...NAO. ERRO DE PARM
+         LH    R2,0(,R1)          :R2<- SALVA O TAMANHO DO PARM
+         CH    R2,=H'40'          :R2-> TAMANHO DO PARM E' MAIOR QUE?
+         BH    E1_PARM            :...SIM. ERRO DE PARAMETRO
+         LA    R3,2(,R1)          :R3<- ENDERECO DO DADOS DO PARM
+*
+*---------------------------------------------------------------------*
+* PROC: PROCESSAMENTO ->                                              *
+*---------------------------------------------------------------------*
+P2_PROC  DS   0H
+         LA    R4,WRK#AREA        :R2<-ENDERECO DE DESTINO
+         XR    R5,R5              :R5<-TAMANHO DO DESTINO
+*
+P2_LOOP  EQU   *
+         CLI   0(R3),C','         :R3<- E' UM CARACTER ','?
+         BE    P2_CHNGR           :...SIM. MUDANCA DE COMANDO.
+         CLI   0(R3),C'='         :R3<- E' UM CARACTER '='?
+         BE    P2_CMMD            :...SIM. MONTAR O COMANDO
+         CLI   0(R3),C'<'         :R3<- E' UM CARACTER '<'?
+         BE    P2_CMMD            :...SIM. MONTAR O COMANDO
+         CLI   0(R3),C'>'         :R3<- E' UM CARACTER '>'?
+         BE    P2_CMMD            :...SIM. MONTAR O COMANDO
+         MVC   0(1,R4),0(R3)      :WRK#AREA <- PARM
+         LA    R4,1(,R4)          :R4<- PROXIMO ENDERECO DE DESTINO
+         LA    R5,1(,R5)          :R5<- ADICIONA AO TAMANHO DESTINO
+         B     P2_NEXT            :VA PARA PROXIMO ENDERECO
+*
+P2_CMMD  EQU   *
+         MVC   WRK#CMMD(1),WRK#AREA :SALVE O TIPO DE COMANDO.
+         CLI   WRK#CMMD,C'R'      :TIPO DE COMANDO E 'RET.CODE'?
+         BE    P2_CLEAR           :...SIM. INICIALIZA OS DADOS.
+P2_FILE  EQU   *
+         MVC   DST#COND(1),0(R3)  :SALVA A PRIMEIRA CONDICAO.
+         CLI   1(R3),C'='         :SINAL DE '=' P/ CONDICAO?
+         BE    P2_COND            :...SIM. SALVA A CONDICAO.
+         CLI   1(R3),C'>'         :SINAL DE '>' P/ CONDICAO?
+         BNE   P2_CLEAR           :...NAO. PREPARA P/ PROXIMO DADOS
+P2_COND  EQU   *
+         LA    R2,1(,R2)          :R2<- AVANCA 1 NO CONTROLE DE LACO
+         LA    R3,1(,R3)          :R3<- PROXIMO ENDERECO DO PARM
+         MVC   DST#COND+1(1),0(R3) :SALVA A SEGUNDA CONDICAO.
+         B     P2_CLEAR           :APONTA AS AREA E PREPARA NOVOS DADOS
+*
+P2_CHNGR EQU   *
+         CLI   WRK#CMMD,C'R'      :TIPO DE COMANDO E 'RET.CODE'?
+         BE    P2_RETC            :...SIM. TRATA DO RET.CODE.
+         BAL   R14,S2_FILE        :PROCESSA O ARQUIVO
+         MVI   WRK#CMMD,C' '      :INICIALIZA O COMANDO.
+         B     P2_CLEAR           :APONTA AS AREA E PREPARA NOVOS DADOS
+P2_RETC  EQU   *
+         BAL   R14,S1_RETCD       :PROCESSA O RET.CODE.
+         MVI   WRK#CMMD,C' '      :INICIALIZA O COMANDO
+*
+P2_CLEAR EQU   *
+         MVI   WRK#AREA,X'40'     :LIMPA AREA DE TRABALHO
+         MVC   WRK#AREA+1(L'WRK#AREA-1),WRK#AREA
+         LA    R4,WRK#AREA        :R4<-ENDERECO DO DESTINO
+         XR    R5,R5              :R5<-ZERA TAMANHO DO DESTINO
+*
+P2_NEXT  EQU   *
+         LA    R3,1(,R3)          :R3<- PROXIMO ENDERECO DO PARM
+         BCT   R2,P2_LOOP         :R2<- LACO DE TAMANHO DO PARM
+*---------------------------------------------------------------------*
+* PROC: ENCERRAMENTO ->                                               *
+*---------------------------------------------------------------------*
+P3_END   EQU   *
+         CLI   WRK#CMMD,C' '      :EXISTE COMANDO PROCESSADO?
+         BNE   P3_RETC            :...SIM. VERIFICA SE E' RET.CODE.
+         MVC   RETNCODE,=F'88'    :RET.CODE GERAL <- 88
+         B     P9_EOJ             :FINALIZA O PROGRAMA
+*
+P3_RETC  EQU   *
+         CLI   WRK#CMMD,C'F'      :COMANDO FILE?
+         BE    P3_FILE            :...SIM. EXECUTA OS PROCESSO.
+         BAL   R14,S1_RETCD       :PROCESSA O RET.CODE
+         B     P9_EOJ             :FINALIZA O PROGRAMA
+*
+P3_FILE  EQU   *
+         CLI   DST#COND,C' '      :EXISTE CONDICAO DE ARQUIVO?
+         BE    P9_EOJ             :...NAO. FINALIZA O PROGRAMA.
+         BAL   R14,S2_FILE        :PROCESSA O ARQUIVO
+         B     P9_EOJ             :FINALIZA O PROGRAMA
+*
+         TITLE 'SYS005 - DEFINICAO  DOS  ERROS'
+*---------------------------------------------------------------------*
+* ERRO: PARM NAO INFORMADO OU INVALIDO.                               *
+*---------------------------------------------------------------------*
+E1_PARM  DS   0H
+         WTO   '*** ERRO - PARAMETRO NAO INFORMADO'
+         MVC   RETNCODE,=F'12'    :RETURN CODE = 12
+         B     P9_EOJ             :TERMINO DO PROGRAMA
+*
+         TITLE 'SYS005 - DEFINICAO  DAS  SUB-ROTINAS'
+*---------------------------------------------------------------------*
+* SUB: PROCESSA O COMANDO 'RETURN CODE'                               *
+*---------------------------------------------------------------------*
+*  INPUT : NENHUM                                                     *
+*  OUTPUT: R14: RETORNO A CHAMADA.                                    *
+*---------------------------------------------------------------------*
+S1_RETCD DS   0H
+         STM   R0,R15,SAVEREGS    :SALVA OS REGISTRADORES
+         LTR   R5,R5              :R5<-TAMANHO ESTA ZERADO?
+         BZ    S1_RETN            :...SIM. VA PARA O RETORNO.
+*
+         LA    R6,WRK#AREA        :R6<-ENDERECO DE ORIGEM
+         LA    R7,WRK#FULL        :R7<-ENDERECO DE DESTINO
+         XR    R8,R8              :R8<-ZERA O TAMANHO DO CAMPOS
+S1_LOOP  EQU   *
+         CLI   0(R6),X'F9'        :R3-> MAIOR QUE O '9'?
+         BH    S1_NEXT            :...SIM. PROXIMO ENDERECO.
+         CLI   0(R6),X'F0'        :R3-> MENOR QUE '0'?
+         BL    S1_NEXT            :...SIM. PROXIMO ENDERECO.
+         MVC   0(1,R7),0(R6)      :R7<-R6 SALVA DESTINO P/ ORIGEM
+         LA    R8,1(,R8)          :R8<- SOME 1 AO TAMANHO
+         LA    R7,1(,R7)          :R7<- PROXIMO ENDERECO DE DESTINO
+S1_NEXT  EQU   *
+         LA    R6,1(,R6)          :R6<- PROXIMO ENDERECO DE ORIGEM
+         BCT   R5,S1_LOOP         :R5<- CONTROLE DE LACO
+*
+S1_PACK  EQU   *
+         LTR   R8,R8              :R8<-TAMANHO ESTA ZERADO?
+         BZ    S1_RETN            :...SIM. SAI DA ROTINA.
+*
+         XC    WRK#DBLE,WRK#DBLE  :INIZIALIZA VARIAVEL
+         BCTR  R8,0               :R8->DESCONTA O OFFSET
+         EX    R8,PACK_RC         :DESCOMPACTA O NUMERO
+         CVB   R3,WRK#DBLE        :R3<- CONVERTE PARA BINARIO
+         ST    R3,RETNCODE        :R3-> SALVA PARA COD. DE RETORNO
+*
+S1_RETN  EQU   *
+         LM    R0,R15,SAVEREGS    :RESTAURA OS REGISTRADORES
+         BR    R14                :R14-> SAIDA DA SUB-ROTINA E RETORNO
+*
+PACK_RC  PACK  WRK#DBLE+3(5),WRK#FULL(0)
+*---------------------------------------------------------------------*
+* SUB: PROCESSA O COMANDO 'FILE'                                      *
+*---------------------------------------------------------------------*
+*  INPUT : NENHUM                                                     *
+*  OUTPUT: R14: RETORNO A CHAMADA.                                    *
+*---------------------------------------------------------------------*
+S2_FILE  DS   0H
+         STM   R0,R15,SAVEREGS    :SALVA OS REGISTRADORES
+         LTR   R5,R5              :R5<-TAMANHO ESTA ZERADO?
+         BZ    S2_RETN            :...SIM. VA PARA O RETORNO.
+*
+         LA    R6,WRK#AREA        :R6<-ENDERECO DE ORIGEM
+         LA    R7,WRK#DBLE        :R7<-ENDERECO DE DESTINO
+         XR    R8,R8              :R8<-TAMANHO ESTA ZERADO
+         XC    WRK#DBLE,WRK#DBLE  :LIMPA A VARIAVEL
+*
+S2_LOOP  EQU   *
+         CLI   0(R6),X'F9'        :R3-> MAIOR QUE O '9'
+         BH    S2_NEXT            :...SIM. PROXIMO ENDERECO.
+         CLI   0(R6),X'F0'        :R3-> MENOR QUE '0'
+         BL    S2_NEXT            :...SIM. PROXIMO ENDERECO.
+         MVC   0(1,R7),0(R6)      :SALVA O VALOR
+         LA    R7,1(,R7)          :R7<- AVANCA P/ PROXIMO ENDERECO
+         LA    R8,1(,R8)          :R8<- SOMA 1 AO TAMANHO
+*
+S2_NEXT  EQU   *
+         LA    R6,1(,R6)          :R6<- AVANCA P/ PROXIMO ENDERECO
+         BCT   R5,S2_LOOP         :R5<- CONTROLA O LACO DE TAMANHO
+*
+S2_PACK  EQU   *
+         LTR   R8,R8              :R9<-TAMANHO ESTA ZERADO?
+         BZ    S2_RETN            :...SIM. VA PARA O RETORNO.
+         BCTR  R8,0               :R8->DESCONTA O OFFSET
+         EX    R8,PACK_DS         :COMPACTA O NUMERO
+*
+*   PROCESSAMETO DO ARQUIVO INFORMADO.
+*
+         OPEN  (SYSIN,INPUT)      :ABRE O ARQUIVO
+         TM    SYSIN+48,X'10'     :ARQUIVO ABRIU COM SUCESSO?
+         BNO   S2_RETN            :...NAO. SAI DA SUBROTINA
+*
+S2_READ  EQU   *
+         GET   SYSIN              :BUSCA UM REGISTRO DE ENTRADA
+         AP    DST#CREC,=P'1'     :SOME 1 AO CONTADOR DE REGISTRO
+         B     S2_READ            :LE O PROXIMO REGISTRO
+S2_CLOSE EQU   *
+         CLOSE (SYSIN)            :FECHA O ARQUIVO
+*
+S2_VEFIF EQU   *
+         LA    R6,TAB#COND        :R6<- ENDERECO DA TABELA
+         L     R7,=A(TAB#LEN)     :R7<- VALOR DO TAMANHO DA TABELA
+S2_LACO  EQU   *
+         CLC   DST#COND,0(R6)     :CONDICAO DO ARQUIVO ESTA NA TABELA?
+         BE    S2_COND            :...SIM. PROCESSA.
+         LA    R6,4(R6)           :R6<- PROXIMO ENDERECO DA TABELA.
+         BCT   R7,S2_LACO         :R7-> CONTROLE DE LACO
+         B     S2_RETN            :SAI DA SUB-ROTINA
+*
+S2_COND  EQU   *
+         MVC   GOSUB+2(2),2(R6)   :APONTA O ENDERECO PARA BRANCH
+GOSUB    B     GOSUB              :EXECUTA O BRANCH
+S2_CND1 EQU    *                  :IGUAL'='
+         CP    DST#CREC,DST#IREC  :REGS. LIDOS IGUAL INFORMADOS?
+         BE    S2_RETN            :...SIM. TESTE OK, SAI DA ROTINA.
+         B     S2_ERROR           :TRATA DO ERRO.
+*
+S2_CND2 EQU    *                  :DESIGUAL'<>'
+         CP    DST#CREC,DST#IREC  :REGS. LIDOS DIFERENTE INFORMADOS?
+         BNE   S2_RETN            :...SIM. TESTE OK, SAI DA ROTINA.
+         B     S2_ERROR           :TRATA DO ERRO.
+*
+S2_CND3 EQU    *                  :MENOR'<'
+         CP    DST#CREC,DST#IREC  :REGS. LIDOS = INFORMADOS?
+         BL    S2_RETN            :...SIM. TESTE OK, SAI DA ROTINA.
+         B     S2_ERROR           :TRATA DO ERRO.
+*
+S2_CND4 EQU    *                  :MENOR E IGUAL'<='
+         CP    DST#CREC,DST#IREC  :REGS. LIDOS = INFORMADOS?
+         BNH   S2_RETN            :...SIM. TESTE OK, SAI DA ROTINA.
+         B     S2_ERROR           :TRATA DO ERRO.
+*
+S2_CND5 EQU    *                  :MAIOR '>'
+         CP    DST#CREC,DST#IREC  :REGS. LIDOS = INFORMADOS?
+         BH    S2_RETN            :...SIM. TESTE OK, SAI DA ROTINA.
+         B     S2_ERROR           :TRATA DO ERRO.
+*
+S2_CND6 EQU    *                  :MAIOR E IGUAL'>='
+         CP    DST#CREC,DST#IREC  :REGS. LIDOS = INFORMADOS?
+         BNL   S2_RETN            :...SIM. TESTE OK, SAI DA ROTINA.
+*
+S2_ERROR EQU   *                  :
+         CLC   RETNCODE,=F'0'     :RET.CODE GERAL ESTA ZERADO?
+         BNE   S2_RETN            :...NAO. SAI DA SUB-ROTINA
+         MVC   RETNCODE,=F'88'    :RET.CODE GERAL <- 88
+*
+S2_RETN  EQU   *                  :
+         LM    R0,R15,SAVEREGS    :RESTAURA OS REGISTRADORES
+         BR    R14                :R14-> SAIDA DA SUB-ROTINA E RETORNO
+*
+PACK_DS  PACK  DST#IREC,WRK#DBLE(0)
+*
+         TITLE 'SYS005 - ROTINAS FINAIS DO PROGRAMA'
+*---------------------------------------------------------------------*
+* PROC: FINALIZACAO -> RESTAURA COMPONENTES E TERMINA PROGRAMA        *
+*---------------------------------------------------------------------*
+P9_EOJ   DS   0H
+         L    R15,RETNCODE        :R15<- RETURN CODE
+         EXIT
+*
+         TITLE 'SYS005 - DEFINICAO  DAS  CONSTANTES  E  VARIAVEIS'
+*---------------------------------------------------------------------*
+* AREA: DEFINICAO DAS VARIAVEIS GLOBAIS DO PROGRAMA.                  *
+*---------------------------------------------------------------------*
+         CNOP  0,4
+         LTORG ,
+*
+         DS   0F
+SAVEAREA DS  18F                  :AREA DA LINKAGE SECTION
+SAVEREGS DS  16F                  :AREA DOS REGISTRADORES
+RETNCODE DS    F                  :COD. DE RETORNO
+*
+SYSIN    DCB   DDNAME=SYSIN,                                           +
+               MACRF=GL,DSORG=PS,                                      +
+               EODAD=S2_CLOSE
+*
+         DS   0F
+WRK#DBLE DC    D'0'               :WORD DOUBLE
+WRK#FULL DC   2F'0'               :WORD FULL
+WRK#AREA DC    CL20' '            :AREA DE TRABALHO
+WRK#CMMD DC    CL1' '             :TIPO DE COMANDO
+*                                   'R': RETURN CODE
+*                                   'F': FILE
+DST#COND DC    CL2' '             :CONDICAO DE ARQUIVO
+DST#IREC DC    PL5'0'             :NRO. DE REGISTRO INFORMADO
+DST#CREC DC    PL5'0'             :NRO. DE REGISTRO CALCULADO
+*
+TAB#COND DS   0H
+         DC    CL2'= '             EQUAL
+         DS   0H
+         DC    S(S2_CND1)
+*
+         DC    CL2'<>'             NOT EQUAL
+         DS   0H
+         DC    S(S2_CND2)
+*
+         DC    CL2'< '             LESS THAN
+         DS   0H
+         DC    S(S2_CND3)
+*
+         DC    CL2'<='             LESS AND EQUAL
+         DS   0H
+         DC    S(S2_CND4)
+*
+         DC    CL2'> '             GREATER THAN
+         DS   0H
+         DC    S(S2_CND5)
+*
+         DC    CL2'>='             GREATER AND EQUAL
+         DS   0H
+         DC    S(S2_CND6)
+TAB#LEN  EQU   *-TAB#COND
+*
+         END    ,
+/*
+//*
+//LKED.SYSLMOD  DD  DISP=SHR,DSN=ABC.LOADLIB
+//LKED.SYSIN DD *
+  NAME SYS005(R)
+//

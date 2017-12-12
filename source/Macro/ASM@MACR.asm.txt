@@ -1,0 +1,187 @@
+         TITLE 'ENTER - IDENTIFICACAO E LINKAGE SECTION'
+         MACRO
+***********************************************************************
+*   Descricao.: Identifica o programa e salva os registradores de     *
+*               Entrada e aponta os registradores gerais.             *
+*   Parametros: &SAVEAREA - Variavel para a Savearea do programa      *
+*               &BASE     - Registradores base para o programa.       *
+*                           O default e' 12, pode ser informado       *
+*                           mais de um registrador base=(xx,xx)       *
+*               &AMODE    - NO/YES,  Se 'YES' assume AMODE=31         *
+***********************************************************************
+&NAME    ENTER &SAVEAREA,&BASE=12,&AMODE=NO
+         AIF  ( '&SAVEAREA' EQ '' ).ERROR1
+.*
+.* ***------------------------------------------------------------*** *
+.* *  D e f i n i c a o  d a s  v a r i a v e i s  d a  M a c r o   * *
+.* ***------------------------------------------------------------*** *
+         GBLC  &SAVEDEF
+         LCLC  &ENTPRG
+         LCLC  &BASEIT
+         LCLA  &BASES
+         LCLA  &COUNT0
+         LCLA  &COUNT1
+.*
+.* ***------------------------------------------------------------*** *
+.* *            R o t i n a   d e   E N T E R                       * *
+.* ***------------------------------------------------------------*** *
+&SAVEDEF SETC  '&SAVEAREA'
+&SOUTDEF SETB  0
+&SNAPDEF SETB  0
+.*
+&BASES   SETA  N'&BASE
+         AIF   (&BASES EQ 0).ERROR2
+&COUNT0  SETA  1
+*
+&NAME    CSECT
+         AIF   ( '&AMODE' EQ 'NO' ).ENTSAVE
+&NAME    AMODE 31                 :ENDERECAMENTO DE 31 BIT
+&NAME    RMODE ANY                :ENDERECAMENTO GERAL
+         ENTRY &NAME              :ENTY POINT DO PROGRAMA
+.ENTSAVE ANOP
+         USING &NAME,15           :R15<- APONTA COM REG. BASE
+         STM   14,12,12(13)       :SALVA OS REG. GERAIS
+*
+* ***-------------------------------------------------------------*** *
+* *  AREA: Identificacao do Programa e sua criacao.                 * *
+* ***-------------------------------------------------------------*** *
+&ENTPRG  SETC  'ENTR&SYSNDX'
+         B     &ENTPRG
+         DC    CL28'(@)Copyright:Kenio de Souza.'
+         DC    CL09' Program:'
+         DC    CL08'&NAME'
+         DC    CL06',Date:'
+         DC    CL08'&SYSDATE'
+         DC    CL06',Time:'
+         DC    CL05'&SYSTIME'
+*
+* ***-------------------------------------------------------------*** *
+* *  Proc: Entry point com a Linkage section.                       * *
+* ***-------------------------------------------------------------*** *
+&ENTPRG  DS   0H                ***  L I N K A G E   S E C T I O N  ***
+         ST    13,&SAVEDEF+4      :R13-> GUARDA SAVEAREA ANTERIOR
+         LA    14,&SAVEDEF        :R14<- ENDERECO DA SAVEAREA NOVA
+         ST    14,8(,13)          :R14-> GUARDA END. DA SAVEAREA NOVA
+         LR    13,14              :R13<- APONTA NOVO ENDERECO
+.*
+.* ***------------------------------------------------------------*** *
+.* *  Macro: Definindo um unico Registrador como Reg. Base.         * *
+.* ***------------------------------------------------------------*** *
+         LR    &BASE(&COUNT0),15  :R15-> NOVO REGISTRADOR BASE
+         AIF   (&BASES GT 1).ENTNBAS
+         DROP  15                 :R15-> DESAPONTA O REG. COM REG. BASE
+         USING &NAME,&BASE(&COUNT0)
+         AGO   .MEXIT
+.*
+.* ***------------------------------------------------------------*** *
+.* *  Macro: Definindo 2 ou mais Registradores como Reg. Base.      * *
+.* ***------------------------------------------------------------*** *
+.ENTNBAS ANOP
+&BASEIT  SETC  '&BASEIT&BASE(&COUNT0)'
+         AIF   (&BASES EQ &COUNT0).ENTNEND
+&BASEIT  SETC  '&BASEIT,'
+&COUNT1  SETA  &COUNT0+1
+         LA    &BASE(&COUNT1),2048(&BASE(&COUNT0))
+         LA    &BASE(&COUNT1),2048(&BASE(&COUNT1))
+&COUNT0  SETA  &COUNT0+1
+         AGO   .ENTNBAS
+.ENTNEND ANOP
+         DROP  15                 :R15-> DESAPONTA REG. COM REG. BASE
+         USING &NAME,&BASEIT      :APONTA NOVOS REGS. COM REG. BASE
+         AGO   .MEXIT
+.*
+.* ***------------------------------------------------------------*** *
+.* *               R o t i n a   d e   E r r o s                    * *
+.* ***------------------------------------------------------------*** *
+.ERROR1  ANOP
+         MNOTE 8,'A VARIAVEL DE SAVEAREA NAO FOI INFORMADA'
+         MEXIT
+.*
+.ERROR2  ANOP
+         MNOTE 8,'REGISTRADOR BASE NAO FOI INFORMADO'
+         MEXIT
+.*
+.* ***------------------------------------------------------------*** *
+.* *                  F i m   d a   M a c r o                       * *
+.* ***------------------------------------------------------------*** *
+.MEXIT   ANOP
+*
+         CNOP  0,4
+         MEND
+*
+         TITLE 'EXIT - RESTAURA OS REGISTRADORES E FIM DE PROGRAMA'
+         MACRO
+***********************************************************************
+*   Descricao.: Restaura os registradores Base, SAVEARE e retorna ao  *
+*               programa chamador.                                    *
+*   Parametros: &FLOAT=NO/YES - Definicao dos Registradores flutuantes*
+*                      FLOAT=YES - Definindo o Ponto flutuante        *
+*               &BITS=NO/YES - Definicao dos Bits Mask para uso geral *
+*                    BITS=YES  - Definindo o Bit mask                 *
+***********************************************************************
+&NAME    EXIT  &FLOAT=NO,&BITS=NO
+.*
+         GBLC  &SAVEDEF
+.*
+.EXTNAME ANOP
+         AIF  ( '&NAME' EQ '' ).EXTRETN
+&NAME    DS   0H                  : FINALIZACAO
+* ***------------------------------------------------------------*** *
+* *  Trata o Encerramento do Programa.                             * *
+* ***------------------------------------------------------------*** *
+.EXTRETN DS   0H               ***  L I N K A G E   S E C T I O N  ***
+         L     13,&SAVEDEF+4      :R13<- RESTAURA O REG. GERAL
+         L     14,12(,13)         :R14<- RESTAURA O REG. GERAL
+         LM    0,12,20(13)        :RESTAURA OS REGISTRADORES GERAIS
+         BR    14                 :R14-> RETORNA AO CHAMADOR
+*
+* ***------------------------------------------------------------*** *
+* *  Definicoes de Registradores Geral                             * *
+* ***------------------------------------------------------------*** *
+R0       EQU    0
+R1       EQU    1
+R2       EQU    2
+R3       EQU    3
+R4       EQU    4
+R5       EQU    5
+R6       EQU    6
+R7       EQU    7
+R8       EQU    8
+R9       EQU    9
+R10      EQU   10
+R11      EQU   11
+R12      EQU   12
+R13      EQU   13
+R14      EQU   14
+R15      EQU   15
+.*
+         AIF   ('&FLOAT' EQ 'NO').EXTBITS
+*
+* ***------------------------------------------------------------*** *
+* *  Definicoes dos Registradores de Ponto flutuante.              * *
+* ***------------------------------------------------------------*** *
+F0       EQU   0
+F2       EQU   2
+F4       EQU   4
+F6       EQU   6
+.*
+.EXTBITS ANOP
+         AIF   ('&BITS' EQ 'NO').MEXIT
+*
+* ***------------------------------------------------------------*** *
+* *  Definicoes de BIT MASK de Trabalho geral.                     * *
+* ***------------------------------------------------------------*** *
+BIT0     EQU   X'80'         BITS '1... ....'
+BIT1     EQU   X'40'              '.1.. ....'
+BIT2     EQU   X'20'              '..1. ....'
+BIT3     EQU   X'10'              '...1 ....'
+BIT4     EQU   X'08'              '.... 1...'
+BIT5     EQU   X'04'              '.... .1..'
+BIT6     EQU   X'02'              '.... ..1.'
+BIT7     EQU   X'01'              '.... ...1'
+.*
+.* ***------------------------------------------------------------*** *
+.* *                  F i m   d a   M a c r o                       * *
+.* ***------------------------------------------------------------*** *
+.MEXIT   ANOP
+         MEND

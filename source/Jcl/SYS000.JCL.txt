@@ -1,0 +1,23 @@
+//EXECS000  JOB   'EXECUTA PROGRAMA SYS000',
+//           COND=((12,EQ),(16,EQ),(888,EQ)),
+//           CLASS=A,MSGCLASS=R,MSGLEVEL=(1,1)
+//*
+//*-------------------------------------------------------------------*
+//EXECUTAR  EXEC PGM=SYS000,
+//          PARM=('SYSIN')
+//*         PARM=('*.D140899.D999.DATA,AAA.DEF,BBB.GHI')
+//*         PARM=('/ABC.DEF.,*.D140899.D999.DATA,FILE1,FILE02')
+//*         PARM=('/ABC.DEF,*.D140899.D999.DATA')
+//*         PARM=('ABC.REL.RELF018A.D140899.D312.DATA')
+//*         PARM=('ABC.DEF.FILE02.D140899.D999.DATA')
+//*         PARM=('*.D140899.D999.DATA,AAA.DEF,BBB.GHI')
+//*         PARM=('/ABC.DEF,*.D140899.D999.DATA')
+//*         PARM=('*.D140899.D999.DATA,AAA.DEF,BBB.GHI')
+//*
+//SYSPRINT   DD  SYSOUT=*
+//SYSOUT     DD  SYSOUT=*
+//*
+//SYSIN      DD  *
+  DELETE         ABC.DEF000F.D140909.GHIJ.DATA
+/*
+//
